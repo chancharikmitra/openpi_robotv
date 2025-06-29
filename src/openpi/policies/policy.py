@@ -39,7 +39,7 @@ class Policy(BasePolicy):
         self._metadata = metadata or {}
 
     @override
-    def infer(self, obs: dict) -> dict:  # type: ignore[misc]
+    def infer(self, obs: dict, return_attention_heads: bool=False) -> dict | tuple[dict, dict]:
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
@@ -48,11 +48,20 @@ class Policy(BasePolicy):
 
         start_time = time.monotonic()
         self._rng, sample_rng = jax.random.split(self._rng)
-        outputs = {
-            "state": inputs["state"],
-            "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), **self._sample_kwargs),
-        }
-        # Unbatch and convert to np.ndarray.        # Unbatch and convert to np.ndarray.
+        print(f'infer return_attention_heads {return_attention_heads}')
+        if return_attention_heads:
+            actions, attention_outputs = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs)
+            outputs = {
+                "state": inputs["state"],
+                "actions": actions,
+            }
+        else:
+            outputs = {
+                "state": inputs["state"],
+                "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs),
+            }
+        
+        # Unbatch and convert to np.ndarray.
         outputs = jax.tree.map(lambda x: np.asarray(x[0, ...]), outputs)
         model_time = time.monotonic() - start_time
 
@@ -60,7 +69,50 @@ class Policy(BasePolicy):
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
-        return outputs
+        
+        if return_attention_heads:
+            # Process attention outputs - unbatch them
+            processed_attention = {}
+            if attention_outputs and "prefill" in attention_outputs and attention_outputs["prefill"] is not None:
+                processed_attention["prefill"] = np.asarray(attention_outputs["prefill"][0])  # Remove batch dimension
+            else:
+                processed_attention["prefill"] = None
+            
+            return outputs, processed_attention
+        else:
+            return outputs
+    # def infer(self, obs: dict, return_attention_heads: bool=False) -> dict:  # type: ignore[misc]
+    #     # Make a copy since transformations may modify the inputs in place.
+    #     inputs = jax.tree.map(lambda x: x, obs)
+    #     inputs = self._input_transform(inputs)
+    #     # Make a batch and convert to jax.Array.
+    #     inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], inputs)
+
+    #     start_time = time.monotonic()
+    #     self._rng, sample_rng = jax.random.split(self._rng)
+    #     if return_attention_heads:
+    #         actions, attention_outputs = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs)
+    #         outputs = {
+    #             "state": inputs["state"],
+    #             "actions": actions,
+    #         }
+    #     else:
+    #         outputs = {
+    #             "state": inputs["state"],
+    #             "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs),
+    #         }
+    #     # Unbatch and convert to np.ndarray.        # Unbatch and convert to np.ndarray.
+    #     outputs = jax.tree.map(lambda x: np.asarray(x[0, ...]), outputs)
+    #     model_time = time.monotonic() - start_time
+
+    #     outputs = self._output_transform(outputs)
+    #     outputs["policy_timing"] = {
+    #         "infer_ms": model_time * 1000,
+    #     }
+    #     if return_attention_heads:
+    #         return outputs, attention_outputs
+    #     else:
+    #         return outputs
 
     @property
     def metadata(self) -> dict[str, Any]:
