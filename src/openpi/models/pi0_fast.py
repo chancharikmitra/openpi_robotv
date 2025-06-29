@@ -234,8 +234,10 @@ class Pi0FAST(_model.BaseModel):
         *,
         max_decoding_steps: int | at.Int[at.Array, ""] = 256,
         temperature: float = 0.0,
-    ) -> _model.Actions:
+        return_attention_heads: bool=False
+    ) -> _model.Actions | tuple[_model.Actions, dict]:
         # TODO: this is a hack to get the image keys.
+        print(f'sample_actions return_attention_heads {return_attention_heads}')
         observation = _model.preprocess_observation(
             None, observation, train=False, image_keys=list(observation.images.keys())
         )
@@ -254,11 +256,18 @@ class Pi0FAST(_model.BaseModel):
 
         # first fill KV cache with a forward pass of the prefix
         # pad attention mask to set the size of the KV cache (prefill_size + max_decoding_steps)
+        # Chancharik - added the return_attention_heads argument everywhere + output handling
         prefix_attn_mask = jnp.pad(prefix_attn_mask, ((0, 0), (0, 0), (0, max_decoding_steps)))
         prefix_positions = jnp.cumsum(prefix_mask, axis=-1) - 1
-        prefix_logits, kv_cache, _ = self.PaliGemma.llm(
-            embedded_prefix=prefix_token_embeddings, mask=prefix_attn_mask, positions=prefix_positions, decode=True
+        prefix_logits, kv_cache, prefill_out = self.PaliGemma.llm(
+            embedded_prefix=prefix_token_embeddings, mask=prefix_attn_mask, positions=prefix_positions, decode=True, return_attention_heads=return_attention_heads
         )
+
+        if return_attention_heads:
+            attention_outputs = {
+                "prefill": prefill_out.get("attention_heads", None),
+                "generation": []
+            }
 
         # prepare decoding -- final logit decodes the first token
         last_logit = prefix_logits[:, -1:]
@@ -299,4 +308,8 @@ class Pi0FAST(_model.BaseModel):
 
         # Use lax.while_loop so we can jit the full decoding loop.
         _, output_tokens, _, _, _ = jax.lax.while_loop(cond, step, (last_logit, output_tokens, kv_cache, False, 0))
-        return output_tokens
+        
+        if return_attention_heads:
+            return output_tokens, attention_outputs
+        else:
+            return output_tokens

@@ -183,7 +183,7 @@ class Attention(nn.Module):
         return idx_new, k_new, v_new
 
     @nn.compact
-    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True):  # noqa: FBT002
+    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True, return_attention_heads=False):  # noqa: FBT002 #Chancharik added return_attention_heads argument
         dtype = x.dtype  # original dtype, could be half-precision
         if self.num_kv_heads == self.num_heads:
             q, k, v = self.qkv_einsum("BSD,3KDH->3BSKH", x)
@@ -221,7 +221,17 @@ class Attention(nn.Module):
 
         encoded = jnp.einsum("BKGTS,BSKH->BTKGH", probs, v)
         encoded = einops.rearrange(encoded, "B T K G H -> B T (K G) H")
-        return self.attn_vec_einsum("BTNH,NHD->BTD", encoded), kv_cache
+        # Chancharik Added Attention Head Output Returns:
+        # return self.attn_vec_einsum("BTNH,NHD->BTD", encoded), kv_cache
+        attention_heads = encoded if return_attention_heads else None
+        
+        output = self.attn_vec_einsum("BTNH,NHD->BTD", encoded)
+        
+        if return_attention_heads:
+            return output, kv_cache, attention_heads
+        else:
+            return output, kv_cache
+        
 
 
 @at.typecheck
@@ -258,10 +268,33 @@ class Block(nn.Module):
         else:
             self.drop = lambda x, _: x
 
-    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True):  # noqa: FBT002
+    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True, return_attention_heads=False):  # noqa: FBT002 # Chancharik added attention 
         x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
+        # Chancharik - Added att head functionality
+
+        # inputs_normalized = self.pre_attention_norm(x)
+        # attn_output, kv_cache = self.attn(inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic)
+        # attn_output = self.drop(attn_output, deterministic)
+        # attn_output += x
+        # residual = attn_output
+        # attn_output = self.pre_ffw_norm(attn_output)
+        # outputs = self.mlp(attn_output)
+        # outputs = self.drop(outputs, deterministic)
+        # outputs = residual + outputs
+        # return outputs, kv_cache
+
         inputs_normalized = self.pre_attention_norm(x)
-        attn_output, kv_cache = self.attn(inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic)
+        
+        if return_attention_heads:
+            attn_output, kv_cache, attention_heads = self.attn(
+                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=True
+            )
+        else:
+            attn_output, kv_cache = self.attn(
+                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=False
+            )
+            attention_heads = None
+            
         attn_output = self.drop(attn_output, deterministic)
         attn_output += x
         residual = attn_output
@@ -269,7 +302,11 @@ class Block(nn.Module):
         outputs = self.mlp(attn_output)
         outputs = self.drop(outputs, deterministic)
         outputs = residual + outputs
-        return outputs, kv_cache
+        
+        if return_attention_heads:
+            return outputs, kv_cache, attention_heads
+        else:
+            return outputs, kv_cache
 
 
 KVCache: TypeAlias = tuple[at.Int[at.Array, " b"], at.Float[at.Array, "b _t _k _h"], at.Float[at.Array, "b _t _v _h"]]
@@ -312,6 +349,7 @@ class Module(nn.Module):
         kv_cache=None,
         deterministic=True,  # noqa: FBT002
         return_prelogits=False,  # noqa: FBT002
+        return_attention_heads=False,  # Chancharik - NEW PARAMETER
     ):
         """Embed only, or complete forward pass.
 
@@ -332,6 +370,7 @@ class Module(nn.Module):
           If `embed_only=True`, then the embeddings will be returned.
           If `return_prelogits=True`, then the pre-logits will be returned.
         """
+        print(f'gemma Module return_attention_heads {return_attention_heads}')
         out = {}
 
         embedder = Embedder(vocab_size=self.vocab_size, embed_dim=self.width, name="embedder")
@@ -376,7 +415,7 @@ class Module(nn.Module):
             block_cls = nn.remat(
                 Block,
                 prevent_cse=not self.scan,
-                static_argnums=(5, 6),  # 0=self, 5=decode, 6=deterministic
+                static_argnums=(4, 5, 6),  # 0=self, 5=decode, 6=deterministic, Chancharik - 7=return_attention_heads
                 policy=getattr(jax.checkpoint_policies, self.remat_policy),
             )
 
@@ -397,18 +436,32 @@ class Module(nn.Module):
                 block_cls,
                 variable_axes={"params": 0},
                 split_rngs={"params": True, "dropout": True},
-                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast),  # 0=kv_cache, 1=positions, 2=mask
+                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast),  # Chancharik - added broadcast for return_attention_heads,  # 0=kv_cache, 1=positions, 2=mask
                 length=self.depth,
             )(parent=layers, **block_kw)
         ]
+        # Chancharik - collect attention_head_outputs 
+        # for block in blocks:
+        #     x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic)
+        all_attention_heads = []
+        print(return_attention_heads)
         for block in blocks:
-            x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic)
+            if return_attention_heads:
+                x, kv_cache, attention_heads = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+                all_attention_heads.append(attention_heads)
+            else:
+                x, kv_cache, _ = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+
 
         assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
         out["encoded"] = x
 
         x = RMSNorm(name="final_norm")(x)
         out["pre_logits"] = x
+        
+        # Chancharik - return attention heads
+        if return_attention_heads:
+            out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # Shape: [n_layers, batch, seq_len, n_heads, head_dim]
         if return_prelogits:
             return x, kv_cache, out
 
@@ -435,3 +488,4 @@ def _apply_rope(x, *, positions, max_wavelength=10_000):
     res = jnp.concatenate([x1 * cos - x2 * sin, x2 * cos + x1 * sin], axis=-1)
     assert res.dtype == jnp.float32
     return res
+
