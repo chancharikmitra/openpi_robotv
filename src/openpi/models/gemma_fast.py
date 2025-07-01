@@ -443,7 +443,6 @@ class Module(nn.Module):
         ]
         # Chancharik - collect attention_head_outputs
         all_attention_heads = []
-        print(f'deterministic {deterministic}')
         if activation_flag:
             for block in blocks:
                 x, (kv_cache, attention_heads) = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)

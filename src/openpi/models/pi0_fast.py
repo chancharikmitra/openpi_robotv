@@ -235,9 +235,8 @@ class Pi0FAST(_model.BaseModel):
         max_decoding_steps: int | at.Int[at.Array, ""] = 256,
         temperature: float = 0.0,
         return_attention_heads: bool=False
-    ) -> _model.Actions | tuple[_model.Actions, dict]:
+    ) -> _model.Actions | tuple[_model.Actions, dict, at.Int[at.Array, "b"]]:
         # TODO: this is a hack to get the image keys.
-        print(f'sample_actions return_attention_heads {return_attention_heads}')
         observation = _model.preprocess_observation(
             None, observation, train=False, image_keys=list(observation.images.keys())
         )
