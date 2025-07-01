@@ -50,7 +50,7 @@ class Policy(BasePolicy):
         self._rng, sample_rng = jax.random.split(self._rng)
         print(f'infer return_attention_heads {return_attention_heads}')
         if return_attention_heads:
-            actions, attention_outputs = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs)
+            actions, attention_outputs, last_token_idx = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs)
             outputs = {
                 "state": inputs["state"],
                 "actions": actions,
@@ -71,14 +71,14 @@ class Policy(BasePolicy):
         }
         
         if return_attention_heads:
-            # Process attention outputs - unbatch them
-            processed_attention = {}
-            if attention_outputs and "prefill" in attention_outputs and attention_outputs["prefill"] is not None:
-                processed_attention["prefill"] = np.asarray(attention_outputs["prefill"][0])  # Remove batch dimension
-            else:
-                processed_attention["prefill"] = None
-            
-            return outputs, processed_attention
+            # Process attention outputs - unbatch them - maybe not necessary
+            # processed_attention = {}
+            # if attention_outputs and "llm_activations" in attention_outputs and attention_outputs["llm_activations"] is not None:
+            #     processed_attention["llm_activations"] = np.asarray(attention_outputs["llm_activations"][0])  # Remove batch dimension
+            # else:
+            #     processed_attention["prefill"] = None
+            attention_outputs['last_token_idx'] = last_token_idx
+            return outputs, attention_outputs#processed_attention
         else:
             return outputs
     # def infer(self, obs: dict, return_attention_heads: bool=False) -> dict:  # type: ignore[misc]

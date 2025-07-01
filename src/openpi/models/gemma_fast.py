@@ -28,6 +28,7 @@ import ml_collections
 
 import openpi.models.lora as lora
 import openpi.shared.array_typing as at
+import copy
 
 Variant = Literal["gemma_2b", "gemma_2b_lora"]
 
@@ -304,7 +305,7 @@ class Block(nn.Module):
         outputs = residual + outputs
         
         if return_attention_heads:
-            return outputs, kv_cache, attention_heads
+            return outputs, (kv_cache, attention_heads)
         else:
             return outputs, kv_cache
 
@@ -370,7 +371,7 @@ class Module(nn.Module):
           If `embed_only=True`, then the embeddings will be returned.
           If `return_prelogits=True`, then the pre-logits will be returned.
         """
-        print(f'gemma Module return_attention_heads {return_attention_heads}')
+        activation_flag = return_attention_heads
         out = {}
 
         embedder = Embedder(vocab_size=self.vocab_size, embed_dim=self.width, name="embedder")
@@ -415,7 +416,7 @@ class Module(nn.Module):
             block_cls = nn.remat(
                 Block,
                 prevent_cse=not self.scan,
-                static_argnums=(4, 5, 6),  # 0=self, 5=decode, 6=deterministic, Chancharik - 7=return_attention_heads
+                static_argnums=(5, 6, 7),  # 0=self, 5=decode, 6=deterministic, Chancharik - 7=return_attention_heads
                 policy=getattr(jax.checkpoint_policies, self.remat_policy),
             )
 
@@ -436,21 +437,20 @@ class Module(nn.Module):
                 block_cls,
                 variable_axes={"params": 0},
                 split_rngs={"params": True, "dropout": True},
-                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast),  # Chancharik - added broadcast for return_attention_heads,  # 0=kv_cache, 1=positions, 2=mask
+                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast),  # Chancharik - added broadcast for return_attention_heads,  # 0=kv_cache, 1=positions, 2=mask
                 length=self.depth,
             )(parent=layers, **block_kw)
         ]
-        # Chancharik - collect attention_head_outputs 
-        # for block in blocks:
-        #     x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic)
+        # Chancharik - collect attention_head_outputs
         all_attention_heads = []
-        print(return_attention_heads)
-        for block in blocks:
-            if return_attention_heads:
-                x, kv_cache, attention_heads = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+        print(f'deterministic {deterministic}')
+        if activation_flag:
+            for block in blocks:
+                x, (kv_cache, attention_heads) = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
                 all_attention_heads.append(attention_heads)
-            else:
-                x, kv_cache, _ = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+        else:
+            for block in blocks:
+                x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
 
 
         assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.

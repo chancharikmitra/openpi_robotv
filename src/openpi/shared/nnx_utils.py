@@ -34,7 +34,7 @@ def module_jit(meth: Callable[P, R], *jit_args, **jit_kwargs) -> Callable[P, R]:
         module = nnx.merge(graphdef, state)
         return meth.__func__(module, *args, **kwargs)
 
-    jitted_fn = jax.jit(fun, *jit_args, **jit_kwargs)
+    jitted_fn = jax.jit(fun, *jit_args, static_argnames=("return_attention_heads",), **jit_kwargs)
 
     @functools.wraps(meth)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
