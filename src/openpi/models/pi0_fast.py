@@ -265,8 +265,7 @@ class Pi0FAST(_model.BaseModel):
 
         if return_attention_heads:
             attention_outputs = {
-                "prefill": prefill_out.get("attention_heads", None),
-                "generation": []
+                "llm_activations": prefill_out.get("attention_heads", None),
             }
 
         # prepare decoding -- final logit decodes the first token
@@ -307,9 +306,11 @@ class Pi0FAST(_model.BaseModel):
             return (~all_eos) & (step < max_decoding_steps)
 
         # Use lax.while_loop so we can jit the full decoding loop.
-        _, output_tokens, _, _, _ = jax.lax.while_loop(cond, step, (last_logit, output_tokens, kv_cache, False, 0))
+        _, output_tokens, _, _, final_step = jax.lax.while_loop(cond, step, (last_logit, output_tokens, kv_cache, False, 0))
         
         if return_attention_heads:
-            return output_tokens, attention_outputs
+            # last_token_idx = jnp.maximum(0, final_step - 1)
+            # attention_outputs["last_token_idx"] = last_token_idx
+            return output_tokens, attention_outputs, jnp.maximum(0, final_step - 1)
         else:
             return output_tokens
