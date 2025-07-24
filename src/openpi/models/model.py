@@ -264,6 +264,8 @@ class BaseModel(nnx.Module, abc.ABC):
         actions: Actions,
         *,
         train: bool = False,
+        return_attention_heads: bool = False,
+        delta_heads: at.Float[at.Array, "b s h"] | None = None,
     ) -> at.Float[at.Array, "*b ah"]: ...
 
     @abc.abstractmethod

@@ -29,6 +29,7 @@ import ml_collections
 import openpi.models.lora as lora
 import openpi.shared.array_typing as at
 import copy
+from jax import debug
 
 Variant = Literal["gemma_2b", "gemma_2b_lora"]
 
@@ -184,7 +185,7 @@ class Attention(nn.Module):
         return idx_new, k_new, v_new
 
     @nn.compact
-    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True, return_attention_heads=False):  # noqa: FBT002 #Chancharik added return_attention_heads argument
+    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True, return_attention_heads=False, delta_heads=None):  # noqa: FBT002 #Chancharik added return_attention_heads argument
         dtype = x.dtype  # original dtype, could be half-precision
         if self.num_kv_heads == self.num_heads:
             q, k, v = self.qkv_einsum("BSD,3KDH->3BSKH", x)
@@ -222,6 +223,20 @@ class Attention(nn.Module):
 
         encoded = jnp.einsum("BKGTS,BSKH->BTKGH", probs, v)
         encoded = einops.rearrange(encoded, "B T K G H -> B T (K G) H")
+        #print("encoded.shape:", encoded.shape)
+        # ------- Steer with external head activations --------
+        # 期望 delta_heads 形状为 (H, D)，由 Module.scan 在第 0 维按层分发。
+        if delta_heads is not None:
+            if delta_heads.ndim != 2:
+                raise ValueError("delta_heads 应为 (H,D)，实际 shape=" + str(delta_heads.shape))
+            # print("delta_heads.shape:", delta_heads.shape)
+            # 只影响最后一个 prefix token
+            encoded = encoded.at[:, -1, :, :].add(delta_heads.astype(encoded.dtype))
+            #print("encoded.shape:", encoded.shape)
+            # debug.print("layer {l}: delta added", l=positions[0,0])   # 或任何能代表层号的标量
+        # =================================
+
+
         # Chancharik Added Attention Head Output Returns:
         # return self.attn_vec_einsum("BTNH,NHD->BTD", encoded), kv_cache
         attention_heads = encoded if return_attention_heads else None
@@ -269,7 +284,7 @@ class Block(nn.Module):
         else:
             self.drop = lambda x, _: x
 
-    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True, return_attention_heads=False):  # noqa: FBT002 # Chancharik added attention 
+    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True, return_attention_heads=False, delta_heads=None):  # noqa: FBT002 # Chancharik added attention head output returns
         x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
         # Chancharik - Added att head functionality
 
@@ -288,11 +303,18 @@ class Block(nn.Module):
         
         if return_attention_heads:
             attn_output, kv_cache, attention_heads = self.attn(
-                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=True
+                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=True, delta_heads=delta_heads
             )
         else:
             attn_output, kv_cache = self.attn(
-                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=False
+                inputs_normalized,
+                positions,
+                attn_mask,
+                kv_cache,
+                decode,
+                deterministic,
+                return_attention_heads=False,
+                delta_heads=delta_heads,
             )
             attention_heads = None
             
@@ -351,6 +373,7 @@ class Module(nn.Module):
         deterministic=True,  # noqa: FBT002
         return_prelogits=False,  # noqa: FBT002
         return_attention_heads=False,  # Chancharik - NEW PARAMETER
+        delta_heads=None,
     ):
         """Embed only, or complete forward pass.
 
@@ -437,7 +460,8 @@ class Module(nn.Module):
                 block_cls,
                 variable_axes={"params": 0},
                 split_rngs={"params": True, "dropout": True},
-                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast),  # Chancharik - added broadcast for return_attention_heads,  # 0=kv_cache, 1=positions, 2=mask
+                # 依次对应: kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads
+                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, 0),
                 length=self.depth,
             )(parent=layers, **block_kw)
         ]
@@ -445,11 +469,11 @@ class Module(nn.Module):
         all_attention_heads = []
         if activation_flag:
             for block in blocks:
-                x, (kv_cache, attention_heads) = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+                x, (kv_cache, attention_heads) = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads)
                 all_attention_heads.append(attention_heads)
         else:
             for block in blocks:
-                x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads)
+                x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads)
 
 
         assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
@@ -460,7 +484,10 @@ class Module(nn.Module):
         
         # Chancharik - return attention heads
         if return_attention_heads:
+            # print("all_attention_heads.shape:", all_attention_heads[0].shape)
             out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # Shape: [n_layers, batch, seq_len, n_heads, head_dim]
+            # print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
+
         if return_prelogits:
             return x, kv_cache, out
 

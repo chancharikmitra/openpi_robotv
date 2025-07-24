@@ -1,0 +1,20 @@
+{
+    "Pick_training_tasks": [
+        "Pick up the marker from the cup and place it on the table",
+        "Pick up the black cable and put it in the tool box",
+        "Pick the marker from the pot and put it on the table",
+        "Pick up the lid and close the pot",
+        "Pick up the pen and put it in the cup",
+        "Pick the lid and put it on the pot"
+    ],
+    "Wipe_training_tasks": [
+        "Use the towel to wipe the plate",
+        "Wipe the table with the towel",
+        "Use the towel to wipe the desk",
+        "Wipe the pan with the dish cloth",
+        "Use the towel to wipe the countertop",
+        "Pick up the cloth from the counter and wipe the pan",
+        "Use a towel to wipe the pan",
+        "Use the grey towel to wipe the tabletop"
+    ]
+}

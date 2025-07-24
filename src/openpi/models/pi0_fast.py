@@ -196,7 +196,7 @@ class Pi0FAST(_model.BaseModel):
 
     @override
     def compute_loss(
-        self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
+        self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False, return_attention_heads: bool = False, delta_heads: at.Float[at.Array, "b s h"] | None = None
     ) -> at.Float[at.Array, "*b ah"]:
         observation = _model.preprocess_observation(
             rng, observation, train=train, image_keys=list(observation.images.keys())
@@ -217,6 +217,8 @@ class Pi0FAST(_model.BaseModel):
             embedded_prefix=input_token_embeddings[:, :-1],
             mask=attn_mask[:, :-1, :-1],
             return_prelogits=True,
+            return_attention_heads=return_attention_heads,
+            delta_heads=delta_heads,
         )
 
         # Only decode logits for the target tokens to save memory
@@ -240,7 +242,8 @@ class Pi0FAST(_model.BaseModel):
         *,
         max_decoding_steps: int | at.Int[at.Array, ""] = 256,
         temperature: float = 0.0,
-        return_attention_heads: bool=False
+        return_attention_heads: bool=False,
+        delta_heads: at.Float[at.Array, "b s h"] | None = None
     ) -> _model.Actions | tuple[_model.Actions, dict, at.Int[at.Array, "b"]]:
         # TODO: this is a hack to get the image keys.
         observation = _model.preprocess_observation(
@@ -255,6 +258,8 @@ class Pi0FAST(_model.BaseModel):
         prefix_token_embeddings, prefix_mask, prefix_attn_mask = left_to_right_align(
             prefix_token_embeddings, prefix_mask, prefix_attn_mask
         )
+        print("prefix_token_embeddings.shape:", prefix_token_embeddings.shape)
+        print("prefix_token_embeddings:", prefix_token_embeddings)
         prefill_size = prefix_token_embeddings.shape[1]
         prefill_len = jnp.sum(prefix_mask, axis=-1)
         prefix_start = prefill_size - prefill_len
@@ -265,7 +270,7 @@ class Pi0FAST(_model.BaseModel):
         prefix_attn_mask = jnp.pad(prefix_attn_mask, ((0, 0), (0, 0), (0, max_decoding_steps)))
         prefix_positions = jnp.cumsum(prefix_mask, axis=-1) - 1
         prefix_logits, kv_cache, prefill_out = self.PaliGemma.llm(
-            embedded_prefix=prefix_token_embeddings, mask=prefix_attn_mask, positions=prefix_positions, decode=True, return_attention_heads=return_attention_heads
+            embedded_prefix=prefix_token_embeddings, mask=prefix_attn_mask, positions=prefix_positions, decode=True, return_attention_heads=return_attention_heads, delta_heads=delta_heads
         )
 
         if return_attention_heads:

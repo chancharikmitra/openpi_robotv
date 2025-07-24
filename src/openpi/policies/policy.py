@@ -39,7 +39,7 @@ class Policy(BasePolicy):
         self._metadata = metadata or {}
 
     @override
-    def infer(self, obs: dict, return_attention_heads: bool=False) -> dict | tuple[dict, dict]:
+    def infer(self, obs: dict, return_attention_heads: bool=False, delta_heads=None) -> dict | tuple[dict, dict]:
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
@@ -49,7 +49,7 @@ class Policy(BasePolicy):
         start_time = time.monotonic()
         self._rng, sample_rng = jax.random.split(self._rng)
         if return_attention_heads:
-            actions, attention_outputs, last_token_idx = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs)
+            actions, attention_outputs, last_token_idx = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, delta_heads=delta_heads, **self._sample_kwargs)
             outputs = {
                 "state": inputs["state"],
                 "actions": actions,
