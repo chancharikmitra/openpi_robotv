@@ -1,12 +1,28 @@
 {
     "Pick_training_tasks": [
-        "Pick up the marker from the cup and place it on the table",
-        "Pick up the black cable and put it in the tool box",
-        "Pick the marker from the pot and put it on the table",
-        "Pick up the lid and close the pot",
-        "Pick up the pen and put it in the cup",
-        "Pick the lid and put it on the pot"
+        "Pick up the blue ring from the table and put it in the wooden tray",
+        "Pick up the lid and put it on top of the black pot",
+        "Pick up the clothes from the table and put them in the box",
+        "Pick up the white and green brush from the table and hang it on the wall",
+        "Pick up the red pepper on the plate and put it on the table",
+        "Pick up the spoon and put it on the table mat",
+        "Pick up the novel and place it on the bed frame",
+        "Pick up the black cloth from the box and put it on the sofa",
+        "Pick up the white object and put it in the storage object within the second shelf of the cabinet",
+        "Pick the stuffed pineapple and put it on the counter",
+        "Pick up the wooden with yellow tip spatula from the utensil holding bucket and put it in the second last right compartment of the opened drawer",
+        "Pick the blue garment and put it on the pile of clothes on the right",
+        "Pick up the spoon and place it in the cup",
+        "Pick up the purple toy from the large container and put it in the blue container",
+        "Pick the lid on the counter and put it on the pot",
+        "Pick up the marker from the bowl  and put it on the table",
+        "Pick up the black sun glasses from the table and put them on the white round mat",
+        "Pick the marker and put it in the cup",
+        "Pick up the yellow cup and put it on top of the toaster",
+        "Pick up the round black object from the clear measuring cup and place it on the table"
+        
     ],
+
     "Wipe_training_tasks": [
         "Use the towel to wipe the plate",
         "Wipe the table with the towel",
@@ -16,5 +32,28 @@
         "Pick up the cloth from the counter and wipe the pan",
         "Use a towel to wipe the pan",
         "Use the grey towel to wipe the tabletop"
+    ],
+
+    "Pick_test_tasks": [
+        "Push down the button on the toaster",
+        "Slide the lid on the wooden toy box to the right",
+        "Remove the marker from the mug",
+        "Open the microwave door",
+        "Slide the tap to the center of the sink and press down the  tap handle",
+        "Open the airfryer",
+        "Pour the contents of the orange cup into the bowl",
+        "Push the door handle down and open the door",
+        "Hang the white cloth on the black stand",
+        "Close the top left drawer",
+        "Fold the blue shirt",
+        "Stack the pillows at the edge of the sofa",
+        "Press down on the coffeemaker",
+        "Pour the contents of the left bowl into the right bowl",
+        "Open the top drawer of the plastic cabinet",
+        "Slide the towel to the right",
+        "Switch off the extension cord",
+        "Push down the right toaster lever",
+        "Twist the straw to the side",
+        "Push the faucet handle on the right forwards"
     ]
 }

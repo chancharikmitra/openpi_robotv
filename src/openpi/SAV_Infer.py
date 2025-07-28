@@ -11,7 +11,7 @@ import random
 import h5py  # type: ignore
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "wipe_train_attention_last_token_keyframe.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
 MAX_EPISODES = 250
 USE_KEYFRAME = True
@@ -161,7 +161,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
     return data
 
 # 用法
-h5_path = "/scr2/yusenluo/openpi/SAV_training/wipe_train.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5" #"/scr2/yusenluo/openpi/SAV_training/pick_train.h5" 
+h5_path = "/scr2/yusenluo/openpi/SAV_training/pick_train_new.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5" #"/scr2/yusenluo/openpi/SAV_training/pick_train.h5" 
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # 遍历并推理，同时打印当前进度：

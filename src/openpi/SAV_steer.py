@@ -15,7 +15,7 @@ import h5py  # type: ignore
 # 如果希望输出到不同路径，可修改此处
 ATTN_H5_PATH = "steer_debug.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
-MAX_EPISODES = 120
+MAX_EPISODES = 1
 # from tasks import Pick_training_tasks
 from openpi.llm_instruction_verb_filter import instruction_matches_prompt
 LLM_PROMPT_KEY = "wipe"
@@ -155,13 +155,15 @@ for task_name, eps in dataset.items():
             inp = policy._input_transform(obs)
             inp = jax.tree.map(lambda x: jnp.asarray(x)[None, ...], inp)
             observation = pi_model.Observation.from_dict(inp)
-
+            # obs, act = config.model.fake_obs(), config.model.fake_act()
+            print("obs:", observation)
+            print("act:", act)
             # ------------------ 计算 loss -----------------------
             key, subkey = jax.random.split(key)
             loss = model.compute_loss(
-                subkey, observation, act,
+                subkey, obs, act,
                 return_attention_heads=False,
-                delta_heads=mean_arr,
+                delta_heads=None,
             )
             print("loss:", loss)
             loss_list.append(loss)
