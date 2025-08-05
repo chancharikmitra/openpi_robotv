@@ -106,3 +106,47 @@ def create_optimizer(
 ) -> optax.GradientTransformation:
     lr = lr_schedule.create()
     return optimizer.create(lr, weight_decay_mask=weight_decay_mask)
+
+
+def _create_head_tuning_mask(params: at.Params, trainable_heads: list[tuple[int, int]]) -> at.Params:
+    """Creates a mask to freeze all but specific attention heads based on observed parameter paths."""
+    trainable_heads_map = {}
+    for layer, head in trainable_heads:
+        if layer not in trainable_heads_map:
+            trainable_heads_map[layer] = []
+        trainable_heads_map[layer].append(head)
+
+    def _get_mask(path: tuple[str, ...], leaf: at.Array) -> at.Array:
+        path_str = "/".join(map(str, path))
+        
+        # Match Gemma LLM attention weights specifically
+        is_gemma_llm_attn = "PaliGemma/llm/layers/attn" in path_str and path_str.endswith("/w")
+        
+        if not is_gemma_llm_attn:
+            return jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else jnp.ones_like(leaf, dtype=jnp.int8)
+
+        # For Gemma, the layer is the first dimension of the weight tensor.
+        # We assume all layers are stacked, so there is no layer index in the path.
+        layer_dim, head_dim = leaf.shape[0], leaf.shape[1]
+
+        if layer_dim != 18 or head_dim not in [1, 8]: # Sanity check for Gemma model
+             return jnp.ones_like(leaf, dtype=jnp.int8)
+
+        mask = jnp.zeros(leaf.shape, dtype=jnp.int8)
+        
+        for layer_idx, heads_to_train in trainable_heads_map.items():
+            if layer_idx >= layer_dim:
+                continue
+            for head_idx in heads_to_train:
+                if head_idx >= head_dim:
+                    continue
+                
+                # The shape is (layers, heads, ...), so we slice on the first two axes.
+                slicer = [slice(None)] * leaf.ndim
+                slicer[0] = layer_idx
+                slicer[1] = head_idx
+                mask = mask.at[tuple(slicer)].set(1)
+                
+        return mask
+
+    return at.tree_map_with_path(_get_mask, params)

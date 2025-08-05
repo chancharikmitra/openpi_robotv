@@ -7,6 +7,7 @@ from tqdm import tqdm
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt  # type: ignore
 import matplotlib.patches as patches  # type: ignore
+from mpl_toolkits.mplot3d import Axes3D  # type: ignore
 
 ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new.h5"
 TASK_JSON    = "tasks.json"
@@ -24,12 +25,16 @@ def plot_tsne_from_sav(
     sav_model: Dict,
     head: str | int = "best",         # "best" | "all" | specific head idx
     perp: int = 30,
+    dim: int = 2,                     # 2 → 2D; 3 → 3D
 ):
     """
     head:
         "best" → use the head with highest head_acc (default in paper)
         "all"  → concatenate all selected heads before feeding to t-SNE
         int    → specify a concrete head index
+    dim:
+        2 → produce 2D embedding and plot a scatter in 2D (default)
+        3 → produce 3D embedding and plot a 3-D scatter
     """
     sel_heads = sav_model["sel_heads"]
     head_acc  = sav_model.get("head_acc")
@@ -54,23 +59,34 @@ def plot_tsne_from_sav(
     X = np.stack(X); y = np.array(y)
 
     # ---- ② Run t-SNE ----
-    tsne = TSNE(n_components=2, perplexity=perp, init="pca", random_state=0)
-    X_2d = tsne.fit_transform(X)
+    tsne = TSNE(n_components=dim, perplexity=perp, init="pca", random_state=0)
+    X_emb = tsne.fit_transform(X)
 
     # ---- ③ Plot ----
-    plt.figure(figsize=(6, 5))
-    plt.scatter(X_2d[y == 1, 0], X_2d[y == 1, 1],
-                c="red",  marker="o", label="Pick (pos)", alpha=.7, s=40)
-    plt.scatter(X_2d[y == 0, 0], X_2d[y == 0, 1],
-                c="blue", marker="x", label="Non-Pick (neg)", alpha=.7, s=40)
+    if dim == 2:
+        plt.figure(figsize=(6, 5))
+        plt.scatter(X_emb[y == 1, 0], X_emb[y == 1, 1],
+                    c="red",  marker="o", label="Pick (pos)", alpha=.7, s=40)
+        plt.scatter(X_emb[y == 0, 0], X_emb[y == 0, 1],
+                    c="blue", marker="x", label="Non-Pick (neg)", alpha=.7, s=40)
+        plt.axis("off")
+        legend_handle = plt.legend()
+    elif dim == 3:
+        fig = plt.figure(figsize=(6, 5))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(X_emb[y == 1, 0], X_emb[y == 1, 1], X_emb[y == 1, 2],
+                   c="red",  marker="o", label="Pick (pos)", alpha=.7, s=40)
+        ax.scatter(X_emb[y == 0, 0], X_emb[y == 0, 1], X_emb[y == 0, 2],
+                   c="blue", marker="x", label="Non-Pick (neg)", alpha=.7, s=40)
+        legend_handle = ax.legend()
+    else:
+        raise ValueError("dim must be 2 or 3")
 
     title = (f"t-SNE – head {head_idxs}" if head != 'all' else
              f"t-SNE – {len(sel_heads)} heads concat")
-    plt.title(title, fontsize=13)
-    plt.axis("off")
-    plt.legend()
+    legend_handle.set_title(title, prop={'size': 13})  # add title near legend
     plt.tight_layout()
-    plt.savefig(f"pick_tsne_{head}.png")
+    plt.savefig(f"pick_tsne_{head}_{dim}d.png")
 
 
 
@@ -79,7 +95,7 @@ def split_episode_keys(
     pos_keywords:   Set[str],       # {"\\bpick\\b"}   positive-class keywords (regex)
     exclude_kw:     Set[str],       # {"\\bwipe\\b"}   exclusion keywords (regex)
     train_task_set: Set[str],       # tasks used in training, for deduplication
-    eval_task_set: Set[str],       # tasks reserved for evaluation, for deduplication
+    eval_task_set: Set[str] = None,       # tasks reserved for evaluation, for deduplication
 ) -> Tuple[List[str], List[str]]:
     """
     Return (pos_keys, neg_keys), each key formatted as "task_name/episode_xxx".
@@ -101,7 +117,7 @@ def split_episode_keys(
             # ① deduplicate: skip if task name already in training or eval set
             if task_norm in train_task_set:
                 continue
-            if task_norm in eval_task_set:
+            if eval_task_set is not None and task_norm in eval_task_set:
                 continue
 
             # ② check keyword hits
@@ -138,6 +154,7 @@ EVAL_TASKS = set(task_dict["Pick_test_tasks"])
 def collect_episode_keys(
     h5_path: str,
     pos_tasks: set,
+    neg_tasks: set = None,
 ) -> Tuple[List[str], List[str]]:
     """Return (pos_keys, neg_keys); key format: task/episode_xxx"""
     pos_keys, neg_keys = [], []
@@ -145,10 +162,17 @@ def collect_episode_keys(
         for task in h5.keys():
             # ① determine whether the task is positive or negative
             is_pos = task in pos_tasks
+            is_neg = task in neg_tasks if neg_tasks is not None else False
             # ② collect all episode groups
             for ep in h5[task].keys():            # ep = 'episode_000', ...
                 key = f"{task}/{ep}"
-                (pos_keys if is_pos else neg_keys).append(key)
+                if neg_tasks is None:
+                    (pos_keys if is_pos else neg_keys).append(key)
+                else:
+                    if is_pos:
+                        pos_keys.append(key)
+                    elif is_neg:
+                        neg_keys.append(key)
     return pos_keys, neg_keys
 
 # ------------------------------------------------------------
@@ -339,9 +363,9 @@ def compute_votes_per_sample(
 
     # head sampling
     heads = np.asarray(sel_heads)
-    if sample_k is not None and heads.shape[0] > sample_k:
-        np.random.seed(1)
-        heads = heads[np.random.choice(heads.shape[0], size=sample_k, replace=False)]
+    # if sample_k is not None and heads.shape[0] > sample_k:
+    #     np.random.seed(1)
+    #     heads = heads[np.random.choice(heads.shape[0], size=sample_k, replace=False)]
 
     votes_all: list[np.ndarray] = []
     with h5py.File(h5_path, "r") as f:
@@ -428,13 +452,13 @@ def save_selected_head_activations(
 # 7.  Example run: Pick vs Non-Pick
 # ------------------------------------------------------------
 # 7.1  Sample support set
-all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, PICK_TASKS)
+all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
 
 random.seed(42)
 support_pos = random.sample(all_pos, 20)
 support_neg = random.sample(all_neg, 20)    
 
-sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
+sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=144, agg="mean", sel_metric="accuracy")
 
 pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 
@@ -448,10 +472,8 @@ pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 #     zero_fill=True,
 # )
 
-# 7.2  Build (example) test set labels
-#     — In real experiments you should provide an independent test set; this is just a demo
 EVAL_H5 = "pick_eval_attention_last_token_single_action_keyframe.h5"    
-all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS, eval_task_set=EVAL_TASKS)
+all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS)
 print(len(all_pos_eval), len(all_neg_eval)) 
 # print(all_pos_eval)
 # print(all_neg_eval)
@@ -459,7 +481,7 @@ pos_eval = random.sample(all_pos_eval, 200)
 neg_eval = random.sample(all_neg_eval, 200)
 eval_eps    = pos_eval + neg_eval          # or a balanced sample
 eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
-# plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all")
+plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
 evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
 # ks, accs = evaluate_curve(EVAL_H5, eval_eps, eval_labels, sav_model,
 #                           max_k=32, step=4, plot_file="topk_curve.png")
@@ -469,11 +491,23 @@ evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
 # ---------- Heatmap ----------
 
 
-def plot_head_heatmap(acc: np.ndarray, sel_heads: List[int],
-                      num_layers=18, num_heads=8, title=""):
-    acc_mat = acc.reshape(num_layers, num_heads)
+def plot_head_heatmap(values: np.ndarray, sel_heads: List[int],
+                      num_layers: int = 18, num_heads: int = 8,
+                      title: str = "", cmap: str = "RdYlBu_r",
+                      vmin: float | None = None, vmax: float | None = None):
+    """通用 head heatmap，可视化任意 per-head 数值（accuracy、margin、contribution 等）。
+
+    vmin/vmax 默认为数据范围；accuracy 可手动设为 0~1 以对齐颜色条。
+    """
+
+    mat = values.reshape(num_layers, num_heads)
+    if vmin is None:
+        vmin = float(mat.min())
+    if vmax is None:
+        vmax = float(mat.max())
+
     fig, ax = plt.subplots(figsize=(5, 10))
-    im = ax.imshow(acc_mat, cmap="RdYlBu_r", vmin=0., vmax=1.)
+    im = ax.imshow(mat, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.invert_yaxis()
     ax.set_xticks(range(num_heads)); ax.set_xticklabels([f"H{h}" for h in range(num_heads)])
     ax.set_yticks(range(num_layers)); ax.set_yticklabels([f"L{l}" for l in range(num_layers)])
@@ -485,17 +519,53 @@ def plot_head_heatmap(acc: np.ndarray, sel_heads: List[int],
         rect = patches.Rectangle((h-0.5, l-0.5), 1, 1, linewidth=1.8,
                                  edgecolor="black", facecolor="none")
         ax.add_patch(rect)
-
+    # 注释显示使用的 active heads
     ax.text(-0.4, -1.1,
             f"Active Heads: {len(sel_heads)}/{num_layers*num_heads}"
             f" ({len(sel_heads)/(num_layers*num_heads):.1%})",
             fontsize=8, bbox=dict(facecolor="lightgray", alpha=.7))
+
     cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
-    cbar.ax.set_ylabel("Accuracy", rotation=-90, va="bottom")
+    cbar.ax.set_ylabel("Value", rotation=-90, va="bottom")
     plt.tight_layout()
-    plt.savefig("SAV_head_heatmap/pick_head_heatmap_mean.png")
+    plt.savefig("SAV_head_heatmap/pick_head_heatmap_generic.png")
     plt.show()
 
-plot_head_heatmap(sav_model["head_acc"], sav_model["sel_heads"],
-                  title="Pick vs Non-Pick – Head Accuracy")
+
+# ------------------------------------------------------------
+# Per-head contribution heatmap (Δ between pos/neg centroids)
+# ------------------------------------------------------------
+
+
+# ------------------------------------------------------------
+# Simple wrapper: visualize SAV-trained metric (accuracy / margin)
+# ------------------------------------------------------------
+
+
+def plot_sav_head_heatmap(sav_model: dict, title: str | None = None):
+    """使用训练时的度量 (sav_model['head_acc']) 绘制 heatmap，并高亮所选 top-k heads。
+
+    sav_model: 字典，run_sav 的返回值。
+    title: 自定义标题；默认根据 sel_metric 自动生成。
+    """
+
+    values = sav_model["head_acc"]          # same metric used for选头 (accuracy / margin)
+    sel_heads = sav_model["sel_heads"]
+    print(sel_heads)
+    # 自动判断是否是 accuracy（范围 0~1）
+    if values.min() >= 0 and values.max() <= 1:
+        vmin, vmax = 0., 1.
+        cmap = "RdYlBu_r"
+    else:                       # margin 等其他指标
+        vmin = float(values.min())
+        vmax = float(values.max())
+        cmap = "YlOrRd"
+
+    if title is None:
+        title = "Head Metric Heatmap (training metric)"
+
+    plot_head_heatmap(values, sel_heads, title=title,
+                      cmap=cmap, vmin=vmin, vmax=vmax)
+
+plot_sav_head_heatmap(sav_model)
 

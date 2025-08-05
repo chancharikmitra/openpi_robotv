@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator, Sequence
 import multiprocessing
 import os
@@ -14,6 +15,7 @@ import openpi.models.model as _model
 import openpi.training.config as _config
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
+from openpi.training.droid_h5_dataset import DroidH5Dataset
 
 T_co = TypeVar("T_co", covariant=True)
 
@@ -167,6 +169,23 @@ def create_rlds_dataset(
     )
 
 
+def create_h5_dataset(
+    data_config: _config.DataConfig,
+    action_horizon: int,
+    batch_size: int,
+    *,
+    shuffle: bool = False,
+) -> Dataset:
+    # At the moment, we only support DROID for RLDS datasets.
+    return DroidH5Dataset(
+        h5_path=data_config.h5_path,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        action_chunk_size=action_horizon,
+        action_space=data_config.action_space,
+    )
+
+
 def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip_norm_stats: bool = False) -> Dataset:
     """Transform the dataset by applying the data transforms."""
     norm_stats = {}
@@ -229,7 +248,7 @@ def create_data_loader(
     """Create a data loader for training."""
     data_config = config.data.create(config.assets_dirs, config.model)
 
-    if data_config.rlds_data_dir is not None:
+    if data_config.rlds_data_dir is not None or data_config.h5_path is not None:
         return create_rlds_data_loader(
             data_config,
             action_horizon=config.model.action_horizon,
@@ -325,7 +344,10 @@ def create_rlds_data_loader(
             number of batches in the dataset, the data loader will loop over the dataset.
             If not provided, will iterate over the dataset indefinitely.
     """
-    dataset = create_rlds_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
+    if data_config.h5_path is not None:
+        dataset = create_h5_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
+    elif data_config.rlds_data_dir is not None:
+        dataset = create_rlds_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
     dataset = transform_iterable_dataset(dataset, data_config, skip_norm_stats=skip_norm_stats, is_batched=True)
 
     data_loader = RLDSDataLoader(

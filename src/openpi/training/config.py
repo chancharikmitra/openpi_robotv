@@ -23,6 +23,7 @@ import openpi.policies.libero_policy as libero_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
+import openpi.training.droid_h5_dataset as droid_h5_dataset
 import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
@@ -89,6 +90,7 @@ class DataConfig:
     # If true, will use the LeRobot dataset task to define the prompt.
     prompt_from_task: bool = False
 
+    h5_path: str | None = None
     # Only used for RLDS data loader (ie currently only used for DROID).
     rlds_data_dir: str | None = None
     # Action space for DROID dataset.
@@ -390,6 +392,64 @@ class RLDSDroidDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
+class H5DroidDataConfig(DataConfigFactory):
+    """
+    Config for training on DROID data stored in a *single H5 file*,
+    using the custom DroidH5Dataset loader (no RLDS).
+    """
+    h5_path: str | None = None
+    action_space: droid_h5_dataset.DroidActionSpace = droid_h5_dataset.DroidActionSpace.JOINT_POSITION
+    
+
+    # ↓↓↓ 与原 RLDS 版几乎一致 ↓↓↓
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/exterior_image_1_left": "observation/image",
+                        "observation/wrist_image_left": "observation/wrist_image",
+                        "observation/joint_position": "observation/joint_position",
+                        "observation/gripper_position": "observation/gripper_position",
+                        "actions": "actions",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+
+        data_transforms = _transforms.Group(
+            inputs=[
+                droid_policy.DroidInputs(
+                    action_dim=model_config.action_dim,
+                    model_type=model_config.model_type,
+                )
+            ],
+            outputs=[droid_policy.DroidOutputs()],
+        )
+
+        if self.action_space == droid_h5_dataset.DroidActionSpace.JOINT_POSITION:
+            delta_mask = _transforms.make_bool_mask(7, -1)   # 只对前 7 维做 Δq
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_mask)],
+            )
+
+        model_transforms = ModelTransformFactory()(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            use_quantile_norm=model_config.model_type == ModelType.PI0_FAST,
+            # 关键：把路径和 action_space 往下传，供 dataloader_factory 使用
+            h5_path=self.h5_path,
+            action_space=self.action_space,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -682,7 +742,7 @@ _CONFIGS = [
         data=RLDSDroidDataConfig(
             repo_id="droid",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            rlds_data_dir="<path_to_droid_rlds_dataset>",
+            rlds_data_dir="/scr2/yusenluo/openpi/rlds_pick_train_pos",
             action_space=droid_rlds_dataset.DroidActionSpace.JOINT_POSITION,
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
@@ -698,6 +758,43 @@ _CONFIGS = [
         save_interval=5000,
         keep_period=20_000,
         num_workers=0,  # Important: RLDS DataLoader requires num_workers=0, handles multi-processing internally
+    ),
+    #
+    # DROID H5 configs.
+    #
+    TrainConfig(
+        name="pi0_fast_droid_h5_finetune",
+        model=pi0_fast.Pi0FASTConfig(
+            action_dim=8,
+            action_horizon=16,
+            max_token_len=180,
+            paligemma_variant="gemma_2b_lora"
+        ),
+        data=H5DroidDataConfig(
+            repo_id="droid",
+            # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
+            h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5",
+            action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=100,          # 100 step 线性升温
+            peak_lr=3e-4,              # 适合小数据微调
+            decay_steps=3_000,         # 3k step 余弦衰减到 min_lr
+            decay_lr=3e-5,             # 最低 3e-5
+        ),
+
+        num_train_steps=5_000,         # ≈50 epoch（数据约100 step/epoch，见说明）
+        batch_size=32,                 # 32 sample × 16 动作 ≈ 4 MB 显存
+        num_workers=0,                 # 不用改；H5 loader 在 tf.data 里已异步
+
+        # ---------- 日志 & checkpoint ----------
+        log_interval=50,               # 每 50 step 打一次日志
+        save_interval=1_000,           # 每 1k step 存一次 ckpt
+        keep_period=5_000,             # 只保留最新一个
     ),
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.
