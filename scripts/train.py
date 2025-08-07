@@ -6,6 +6,7 @@ from typing import Any
 
 import etils.epath as epath
 import flax.nnx as nnx
+from flax.nnx import filterlib
 from flax.training import common_utils
 import flax.traverse_util as traverse_util
 import jax
@@ -81,11 +82,44 @@ def _load_weights_and_validate(loader: _weight_loaders.WeightLoader, params_shap
     )
 
 
+# This function is now self-contained and handles optimizer creation internally.
+def _create_masked_optimizer_for_head_tuning(
+    config: _config.TrainConfig,
+    params: nnx.State,
+) -> optax.GradientTransformation:
+    """Creates a masked optimizer specifically for head-tuning."""
+    # 1. Create the base optimizer using the standard function.
+    base_optimizer = _optimizer.create_optimizer(config.optimizer, config.lr_schedule)
+
+    # 2. Create and filter the mask.
+    mask_arrays = _optimizer._create_head_tuning_mask(params, config.optimizer.trainable_head_indices)
+    filtered_mask_arrays = nnx.State(mask_arrays).filter(config.trainable_filter).to_pure_dict()
+
+    # 3. Define the wrapper for the update step.
+    def masked_update_fn(updates, state, params=None):
+        masked_updates = jax.tree_util.tree_map(lambda u, m: u * m, updates, filtered_mask_arrays)
+        return base_optimizer.update(masked_updates, state, params)
+
+    # 4. Return the new wrapped optimizer.
+    return optax.GradientTransformation(base_optimizer.init, masked_update_fn)
+
+
 @at.typecheck
 def init_train_state(
     config: _config.TrainConfig, init_rng: at.KeyArrayLike, mesh: jax.sharding.Mesh, *, resume: bool
 ) -> tuple[training_utils.TrainState, Any]:
-    tx = _optimizer.create_optimizer(config.optimizer, config.lr_schedule, weight_decay_mask=None)
+
+    # Get the parameter structure outside of `init` to avoid JIT issues.
+    # We use jax.eval_shape on a simple lambda to get the uninitialized parameter tree.
+    params_structure = jax.eval_shape(lambda: nnx.state(config.model.create(init_rng)))
+
+    # Now, create the optimizer. This is also done outside `init`.
+    if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
+        logging.info(f"Creating masked optimizer for trainable heads: {config.optimizer.trainable_head_indices}")
+        tx = _create_masked_optimizer_for_head_tuning(config, params_structure)
+    else:
+        # This is the original, unmodified path for all other configs.
+        tx = _optimizer.create_optimizer(config.optimizer, config.lr_schedule)
 
     def init(rng: at.KeyArrayLike, partial_params: at.Params | None = None) -> training_utils.TrainState:
         rng, model_rng = jax.random.split(rng)
@@ -107,7 +141,7 @@ def init_train_state(
             step=0,
             params=params,
             model_def=nnx.graphdef(model),
-            tx=tx,
+            tx=tx, # tx is now stable and captured from the outer scope
             opt_state=tx.init(params.filter(config.trainable_filter)),
             ema_decay=config.ema_decay,
             ema_params=None if config.ema_decay is None else params,
