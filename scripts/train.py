@@ -91,16 +91,32 @@ def _create_masked_optimizer_for_head_tuning(
     # 1. Create the base optimizer using the standard function.
     base_optimizer = _optimizer.create_optimizer(config.optimizer, config.lr_schedule)
 
-    # 2. Create and filter the mask.
-    mask_arrays = _optimizer._create_head_tuning_mask(params, config.optimizer.trainable_head_indices)
-    filtered_mask_arrays = nnx.State(mask_arrays).filter(config.trainable_filter).to_pure_dict()
+    # 2. First, get the trainable parameters according to the filter
+    trainable_params = params.filter(config.trainable_filter)
+    logging.info(f"Trainable params has {len(trainable_params.to_pure_dict())} parameters")
+    
+    # 3. Create mask only for trainable parameters
+    mask_arrays = _optimizer._create_head_tuning_mask(trainable_params, config.optimizer.trainable_head_indices)
+    logging.info(f"Generated mask has {len(mask_arrays)} top-level keys: {list(mask_arrays.keys())}")
+    
+    # 4. 将掩码提前转成纯 dict，避免在 update 中重复转换
+    mask_dict = nnx.State(mask_arrays).to_pure_dict()
 
-    # 3. Define the wrapper for the update step.
+    # 5. Define the wrapper for the update step.
     def masked_update_fn(updates, state, params=None):
-        masked_updates = jax.tree_util.tree_map(lambda u, m: u * m, updates, filtered_mask_arrays)
-        return base_optimizer.update(masked_updates, state, params)
+        # updates 已经是纯 dict（来自 optax）
+        if hasattr(updates, "to_pure_dict"):
+            updates_dict = updates.to_pure_dict()
+        else:
+            updates_dict = updates  # 直接是 dict
+        
+        # Apply mask in pure dict space
+        masked_updates_dict = jax.tree_util.tree_map(lambda u, m: u * m, updates_dict, mask_dict)
+        
+        # 基础优化器期望 dict
+        return base_optimizer.update(masked_updates_dict, state, params)
 
-    # 4. Return the new wrapped optimizer.
+    # 6. Return the new wrapped optimizer.
     return optax.GradientTransformation(base_optimizer.init, masked_update_fn)
 
 
@@ -142,7 +158,7 @@ def init_train_state(
             params=params,
             model_def=nnx.graphdef(model),
             tx=tx, # tx is now stable and captured from the outer scope
-            opt_state=tx.init(params.filter(config.trainable_filter)),
+            opt_state=tx.init(params.filter(config.trainable_filter).to_pure_dict()),
             ema_decay=config.ema_decay,
             ema_params=None if config.ema_decay is None else params,
         )
@@ -191,14 +207,32 @@ def train_step(
     diff_state = nnx.DiffState(0, config.trainable_filter)
     loss, grads = nnx.value_and_grad(loss_fn, argnums=diff_state)(model, train_rng, observation, actions)
 
-    params = state.params.filter(config.trainable_filter)
-    updates, new_opt_state = state.tx.update(grads, state.opt_state, params)
-    new_params = optax.apply_updates(params, updates)
+    # DEBUG: Print the optimizer state structure at the first step
+    # 使用 JAX 兼容的条件判断
+    jax.lax.cond(
+        state.step == 0,
+        lambda: jax.debug.print("Optimizer state structure: {opt_state}", opt_state=state.opt_state),
+        lambda: None
+    )
 
-    # Update the model in place and return the new full state.
-    nnx.update(model, new_params)
+    # The following block is the main change.
+    # We now operate in the "pure dict" space for the optimizer step.
+    params_trainable = state.params.filter(config.trainable_filter)
+    
+    # Convert nnx.State to pure dicts for optax
+    grads_dict = grads.to_pure_dict()
+    params_trainable_dict = params_trainable.to_pure_dict()
+
+    updates_dict, new_opt_state = state.tx.update(grads_dict, state.opt_state, params_trainable_dict)
+    
+    # optax.apply_updates also expects pure dicts
+    new_params_trainable_dict = optax.apply_updates(params_trainable_dict, updates_dict)
+    
+    # Update the model in place by converting the dict back to an nnx.State
+    nnx.update(model, nnx.State(new_params_trainable_dict))
     new_params = nnx.state(model)
 
+    # Update the model in place and return the new full state.
     new_state = dataclasses.replace(state, step=state.step + 1, params=new_params, opt_state=new_opt_state)
     if state.ema_decay is not None:
         new_state = dataclasses.replace(

@@ -136,55 +136,94 @@ def _create_head_tuning_mask(params: at.Params, trainable_heads: list[tuple[int,
         trainable_heads_map[layer].append(head)
 
     def _get_mask(path: tuple[str, ...], leaf: at.Array) -> at.Array:
-        path_str = "/".join(map(str, path))
+        # 修复：正确处理路径格式
+        # path是一个tuple，每个元素可能是字符串或列表形式的字符串
+        actual_path_parts = []
+        for part in path:
+            part_str = str(part)
+            # 如果是 "['xxx']" 格式，提取xxx
+            if part_str.startswith("['") and part_str.endswith("']"):
+                actual_path_parts.append(part_str[2:-2])
+            else:
+                actual_path_parts.append(part_str)
         
-        # Check for regular attention weights OR LoRA attention weights
-        is_attn_weight = "PaliGemma/llm/layers/attn" in path_str
-        is_lora = "lora_" in path[-1]
+        actual_path = "/".join(actual_path_parts)
         
-        # We only care about attention weights (vanilla or LoRA)
-        if not (is_attn_weight and (path_str.endswith("/w") or is_lora)):
+        # Check for attention weights (both regular and LoRA)
+        is_attn_weight = "PaliGemma/llm/layers/attn" in actual_path
+        is_regular_weight = actual_path.endswith("/w")
+        is_lora_weight = actual_path.endswith("/lora_a") or actual_path.endswith("/lora_b")
+        
+        # We only process attention weights (regular or LoRA)
+        if not (is_attn_weight and (is_regular_weight or is_lora_weight)):
             return jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1
 
         layer_dim = leaf.shape[0]
-        mask = jnp.zeros_like(leaf, dtype=jnp.int8)
-
-        # --- Determine the axis of the head dimension ---
-        # This logic is based on inspecting the parameter shapes from debug_print_params.py
+        
+        # Determine the head axis based on parameter type and name
         head_axis = -1
-        # For LoRA, the head dimension is consistently at axis 1
-        if is_lora:
+        param_name = actual_path_parts[-2] if len(actual_path_parts) >= 2 else ""  # e.g., 'q_einsum', 'kv_einsum', etc.
+        
+        if is_lora_weight:
+            # For LoRA weights, head dimension is consistently at axis 1
             head_axis = 1
-        else: # For original weights
-            param_name = path[-2]
+        else:
+            # For regular weights, determine based on parameter name and actual shape
             if param_name in ["q_einsum", "attn_vec_einsum"]:
+                # Query和output投影：(layers, heads, input_dim, output_dim)
+                # 头部维度在axis 1
                 head_axis = 1
-            elif param_name in ["kv_einsum", "qkv_einsum"]:
-                # For kv_einsum, shape is (2, num_kv_heads, ...), head is at axis 1
-                # For qkv_einsum, shape is (3, num_heads, ...), head is at axis 1
-                 head_axis = 1
+            elif param_name in ["kv_einsum"]:
+                # KV投影对于Gemma：(layers, 2, num_kv_heads, input_dim, output_dim)
+                # 但Gemma使用多查询注意力，KV头数=1，所以实际形状是(layers, 2, 1, ...)
+                # 在这种情况下，我们需要特殊处理
+                if leaf.ndim >= 3 and leaf.shape[2] > 1:
+                    head_axis = 2  # 如果KV头数>1
+                else:
+                    # 对于多查询注意力（KV头数=1），我们需要不同的策略
+                    # 在这种情况下，所有query头共享同一个KV，所以如果任何头被训练，KV就应该被训练
+                    head_axis = -2  # 使用特殊值表示需要特殊处理
+            elif param_name in ["qkv_einsum"]:
+                # QKV合并投影：(layers, 3, heads, ...)
+                head_axis = 2
 
-        # If we couldn't determine the head axis, something is wrong. Freeze it to be safe.
-        if head_axis == -1 or leaf.ndim <= head_axis:
-             logging.warning(f"Could not determine head axis for {path_str} with shape {leaf.shape}. Freezing.")
-             return mask
+        # Safety check
+        if head_axis == -1:
+            # 如果无法确定head axis，默认返回全零掩码（完全冻结）
+            return jnp.zeros_like(leaf, dtype=jnp.int8)
 
-        head_dim_size = leaf.shape[head_axis]
         final_mask = jnp.zeros_like(leaf, dtype=jnp.int8)
 
-        for layer_idx, heads_to_train in trainable_heads_map.items():
-            if layer_idx >= layer_dim:
-                continue
-            for head_idx in heads_to_train:
-                if head_idx >= head_dim_size:
+        # 特殊处理多查询注意力的KV权重
+        if param_name == "kv_einsum" and head_axis == -2:
+            # 对于多查询注意力，如果任何层有训练的头，那么该层的KV都应该被训练
+            for layer_idx, heads_to_train in trainable_heads_map.items():
+                if layer_idx >= layer_dim:
+                    continue
+                if heads_to_train:  # 如果这一层有任何头需要训练
+                    # 训练整个层的KV权重
+                    slicer = [slice(None)] * leaf.ndim
+                    slicer[0] = layer_idx  # Layer dimension
+                    final_mask = final_mask.at[tuple(slicer)].set(1)
+        else:
+            # 普通的头部掩码处理
+            if head_axis >= leaf.ndim:
+                return jnp.zeros_like(leaf, dtype=jnp.int8)
+                
+            head_dim_size = leaf.shape[head_axis]
+            
+            for layer_idx, heads_to_train in trainable_heads_map.items():
+                if layer_idx >= layer_dim:
                     continue
                 
-                # Create a multidimensional slice to set the mask value
-                slicer = [slice(None)] * leaf.ndim
-                slicer[0] = layer_idx      # Layer dimension is always axis 0
-                slicer[head_axis] = head_idx # Head dimension varies
-                final_mask = final_mask.at[tuple(slicer)].set(1)
-                        
+                for head_idx in heads_to_train:
+                    if head_idx < head_dim_size:
+                        # Create a multidimensional slice to set the mask value
+                        slicer = [slice(None)] * leaf.ndim
+                        slicer[0] = layer_idx      # Layer dimension is always axis 0
+                        slicer[head_axis] = head_idx  # Head dimension varies by parameter type
+                        final_mask = final_mask.at[tuple(slicer)].set(1)
+        
         return final_mask
 
     return tree_util.tree_map_with_path(_get_mask, params.to_pure_dict())

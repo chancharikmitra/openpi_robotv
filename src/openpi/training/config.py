@@ -881,52 +881,25 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
         # --- Key changes for debugging ---
-        num_train_steps=10,
-        save_interval=5,
-        keep_period=5,
-        # ---------------------------------
-        batch_size=7, # Smaller batch size for faster startup
-        num_workers=0,
-        log_interval=1,
-        wandb_enabled=False, # Disable wandb for this short run
-    ),
- 
-    # DROID H5 Selective Head-Tuning with LoRA DEBUG config.
-    TrainConfig(
-        name="pi0_fast_droid_h5_head_lora_tune_debug",
-        model=pi0_fast.Pi0FASTConfig(
-            gemma_variant="gemma_2b_lora", # Enable LoRA variant of the model
-            action_dim=8,
-            action_horizon=16,
-            max_token_len=180,
-        ),
-        data=H5DroidDataConfig(
-            repo_id="droid",
-            h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5",
-            action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
-        ),
-        optimizer=_optimizer.AdamWForHeadTuning(
-            trainable_head_indices=[(3, 0), (3, 5), (17, 2)] # Same heads as the other debug config
-        ),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
-        # --- Key changes for debugging ---
-        num_train_steps=10,
-        save_interval=10,
+        num_train_steps=4,
+        save_interval=1,
+        keep_period=1,
         # ---------------------------------
         batch_size=4, # Smaller batch size for faster startup
         num_workers=0,
         log_interval=1,
+        fsdp_devices=1,
         wandb_enabled=False, # Disable wandb for this short run
     ),
- 
-    # DROID H5 Selective Head-Tuning config.
+
+    # DROID H5 Selective Head-Tuning with LoRA DEBUG config.
     TrainConfig(
-        name="pi0_fast_droid_h5_head_tune",
+        name="pi0_fast_droid_h5_head_lora_tune_debug",
         model=pi0_fast.Pi0FASTConfig(
             action_dim=8,
             action_horizon=16,
             max_token_len=180,
+            paligemma_variant="gemma_2b_lora",  # Enable LoRA variant
         ),
         data=H5DroidDataConfig(
             repo_id="droid",
@@ -934,23 +907,23 @@ _CONFIGS = [
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
-             # IMPORTANT: Change this to your desired (layer, head) indices.
-             # Example: Train head 0 and 5 in layer 3, and head 2 in layer 17.
-            trainable_head_indices=[(3, 0), (3, 5), (17, 2)]
+            trainable_head_indices=[(3, 0), (3, 5), (17, 2)]  # Same heads as the other debug config
         ),
+        # Use LoRA freeze filter to freeze original weights, only train LoRA adapters
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=100,
-            peak_lr=3e-4,
-            decay_steps=3_000,
-            decay_lr=3e-5,
-        ),
-        num_train_steps=5_000,
-        batch_size=32,
+        lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
+        # --- Key changes for debugging ---
+        num_train_steps=1000,
+        save_interval=500,
+        keep_period=500,
+        # ---------------------------------
+        batch_size=4,  # Smaller batch size for faster startup
         num_workers=0,
         log_interval=50,
-        save_interval=1_000,
-        keep_period=5_000,
+        ema_decay=None,  # Turn off EMA for LoRA finetuning
     ),
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.
