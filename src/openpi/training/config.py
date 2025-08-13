@@ -781,20 +781,19 @@ _CONFIGS = [
         ).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=100,          # 100 step 线性升温
-            peak_lr=3e-4,              # 适合小数据微调
-            decay_steps=3_000,         # 3k step 余弦衰减到 min_lr
-            decay_lr=3e-5,             # 最低 3e-5
+            warmup_steps=100,          
+            peak_lr=3e-4,              
+            decay_steps=3_000,         
+            decay_lr=3e-5,             
         ),
 
-        num_train_steps=5_000,         # ≈50 epoch（数据约100 step/epoch，见说明）
-        batch_size=32,                 # 32 sample × 16 动作 ≈ 4 MB 显存
-        num_workers=0,                 # 不用改；H5 loader 在 tf.data 里已异步
+        num_train_steps=10000,         
+        batch_size=16,                
+        num_workers=0,       
 
-        # ---------- 日志 & checkpoint ----------
-        log_interval=50,               # 每 50 step 打一次日志
-        save_interval=1_000,           # 每 1k step 存一次 ckpt
-        keep_period=5_000,             # 只保留最新一个
+        log_interval=1000,               
+        save_interval=1000,           
+        keep_period=1000,             
     ),
     TrainConfig(
         name="pi0_fast_droid_h5_full_finetune",
@@ -811,54 +810,19 @@ _CONFIGS = [
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=100,          # 100 step 线性升温
-            peak_lr=3e-4,              # 适合小数据微调
-            decay_steps=3_000,         # 3k step 余弦衰减到 min_lr
-            decay_lr=3e-5,             # 最低 3e-5
+            warmup_steps=100,          
+            peak_lr=3e-4,             
+            decay_steps=3_000,        
+            decay_lr=3e-5,             
         ),
 
-        num_train_steps=5_000,         # ≈50 epoch（数据约100 step/epoch，见说明）
-        batch_size=32,                 # 32 sample × 16 动作 ≈ 4 MB 显存
-        num_workers=0,                 # 不用改；H5 loader 在 tf.data 里已异步
+        num_train_steps=5_000,         
+        batch_size=32,                
+        num_workers=0,                
 
-        # ---------- 日志 & checkpoint ----------
-        log_interval=50,               # 每 50 step 打一次日志
-        save_interval=1_000,           # 每 1k step 存一次 ckpt
-        keep_period=5_000,             # 只保留最新一个
-    ),
-    #
-    # DROID H5 Selective Head-Tuning config.
-    #
-    TrainConfig(
-        name="pi0_fast_droid_h5_head_tune",
-        model=pi0_fast.Pi0FASTConfig(
-            action_dim=8,
-            action_horizon=16,
-            max_token_len=180,
-        ),
-        data=H5DroidDataConfig(
-            repo_id="droid",
-            h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5",
-            action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
-        ),
-        optimizer=_optimizer.AdamWForHeadTuning(
-             # IMPORTANT: Change this to your desired (layer, head) indices.
-             # Example: Train head 0 and 5 in layer 3, and head 2 in layer 17.
-            trainable_head_indices=[(3, 0), (3, 5), (17, 2)]
-        ),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=100,
-            peak_lr=3e-4,
-            decay_steps=3_000,
-            decay_lr=3e-5,
-        ),
-        num_train_steps=5_000,
-        batch_size=32,
-        num_workers=0,
-        log_interval=50,
-        save_interval=1_000,
-        keep_period=5_000,
+        log_interval=50,              
+        save_interval=1_000,          
+        keep_period=5_000,            
     ),
     #
     # DROID H5 Selective Head-Tuning DEBUG config.
@@ -876,7 +840,10 @@ _CONFIGS = [
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
-            trainable_head_indices=[(3, 0), (3, 5), (17, 2)] # Same heads as the main config
+            trainable_head_indices=[
+                (6, 5), (9, 3), (2, 7), (2, 4), (6, 4), (8, 7), (5, 7), (7, 1), (6, 7), (6, 1),
+                (7, 2), (6, 3), (5, 3), (1, 0), (10, 6), (11, 4), (9, 0), (8, 1), (3, 0), (12, 1)
+            ]
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
@@ -907,7 +874,11 @@ _CONFIGS = [
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
-            trainable_head_indices=[(3, 0), (3, 5), (17, 2)]  # Same heads as the other debug config
+            trainable_head_indices=[
+                (6, 5), (9, 3), (2, 7), (2, 4), (6, 4), (8, 7), (5, 7), (7, 1), (6, 7), (6, 1),
+                (7, 2), (6, 3), (5, 3), (1, 0), (10, 6), (11, 4), (9, 0), (8, 1), (3, 0), (12, 1)
+            ] 
+            # trainable_head_indices = [(0, 3), (17, 5), (17, 7), (17, 2), (17, 6), (0, 6), (17, 4), (17, 1), (17, 0), (16, 7), (17, 3), (0, 0), (16, 4), (16, 6), (16, 2), (16, 3), (16, 0), (0, 4), (16, 5), (16, 1)]
         ),
         # Use LoRA freeze filter to freeze original weights, only train LoRA adapters
         freeze_filter=pi0_fast.Pi0FASTConfig(
@@ -916,13 +887,13 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
         # --- Key changes for debugging ---
-        num_train_steps=1000,
-        save_interval=500,
-        keep_period=500,
+        num_train_steps=10000,
+        save_interval=1000,
+        keep_period=1000,
         # ---------------------------------
-        batch_size=4,  # Smaller batch size for faster startup
+        batch_size=16,  # Smaller batch size for faster startup
         num_workers=0,
-        log_interval=50,
+        log_interval=500,
         ema_decay=None,  # Turn off EMA for LoRA finetuning
     ),
     #

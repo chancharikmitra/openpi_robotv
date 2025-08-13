@@ -283,8 +283,8 @@ def run_sav(h5_path, pos_eps, neg_eps, k=20, agg="mean", sel_metric: str = "accu
     else:
         raise ValueError("sel_metric must be 'accuracy' or 'diff'")
 
-    heads = select_top_heads(score, k)
-    #heads = select_bottom_heads(score, k)
+    #heads = select_top_heads(score, k)
+    heads = select_bottom_heads(score, k)
     # ---- statistics ----------------------------------------------------
     print(f"🎯 Top-{k} heads ({sel_metric}) : {heads}")
 
@@ -458,7 +458,7 @@ random.seed(42)
 support_pos = random.sample(all_pos, 20)
 support_neg = random.sample(all_neg, 20)    
 
-sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=144, agg="mean", sel_metric="accuracy")
+sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
 
 pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 
@@ -481,7 +481,7 @@ pos_eval = random.sample(all_pos_eval, 200)
 neg_eval = random.sample(all_neg_eval, 200)
 eval_eps    = pos_eval + neg_eval          # or a balanced sample
 eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
-plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
+# plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
 evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
 # ks, accs = evaluate_curve(EVAL_H5, eval_eps, eval_labels, sav_model,
 #                           max_k=32, step=4, plot_file="topk_curve.png")

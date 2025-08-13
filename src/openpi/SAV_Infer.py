@@ -11,7 +11,7 @@ import random
 import h5py  # type: ignore
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new_lora_tune_20_margin.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
 MAX_EPISODES = 250
 USE_KEYFRAME = True
