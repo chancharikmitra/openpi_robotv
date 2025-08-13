@@ -401,7 +401,6 @@ class H5DroidDataConfig(DataConfigFactory):
     action_space: droid_h5_dataset.DroidActionSpace = droid_h5_dataset.DroidActionSpace.JOINT_POSITION
     
 
-    # ↓↓↓ 与原 RLDS 版几乎一致 ↓↓↓
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         repack_transform = _transforms.Group(
             inputs=[
@@ -429,7 +428,7 @@ class H5DroidDataConfig(DataConfigFactory):
         )
 
         if self.action_space == droid_h5_dataset.DroidActionSpace.JOINT_POSITION:
-            delta_mask = _transforms.make_bool_mask(7, -1)   # 只对前 7 维做 Δq
+            delta_mask = _transforms.make_bool_mask(7, -1)
             data_transforms = data_transforms.push(
                 inputs=[_transforms.DeltaActions(delta_mask)],
                 outputs=[_transforms.AbsoluteActions(delta_mask)],
@@ -443,7 +442,6 @@ class H5DroidDataConfig(DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
             use_quantile_norm=model_config.model_type == ModelType.PI0_FAST,
-            # 关键：把路径和 action_space 往下传，供 dataloader_factory 使用
             h5_path=self.h5_path,
             action_space=self.action_space,
         )
