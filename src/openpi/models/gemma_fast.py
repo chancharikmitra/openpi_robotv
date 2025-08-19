@@ -185,7 +185,7 @@ class Attention(nn.Module):
         return idx_new, k_new, v_new
 
     @nn.compact
-    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True, return_attention_heads=False, delta_heads=None):  # noqa: FBT002 #Chancharik added return_attention_heads argument
+    def __call__(self, x, positions, attn_mask, kv_cache, decode, deterministic=True, return_attention_heads=False, return_attention_probs=False, delta_heads=None):  # noqa: FBT002 #Chancharik added return_attention_heads argument
         dtype = x.dtype  # original dtype, could be half-precision
         if self.num_kv_heads == self.num_heads:
             q, k, v = self.qkv_einsum("BSD,3KDH->3BSKH", x)
@@ -223,6 +223,9 @@ class Attention(nn.Module):
 
         encoded = jnp.einsum("BKGTS,BSKH->BTKGH", probs, v)
         encoded = einops.rearrange(encoded, "B T K G H -> B T (K G) H")
+        # 注意：此处的 encoded 是“按注意力头拼接后的头输出”（shape: [B, T, n_heads, head_dim]，其中 n_heads=K*G），
+        # 用于再经 attn_vec_einsum 投影回 [B, T, D]。它不是注意力概率分布；
+        # 同时它也不同于 Module 级别的 out["encoded"]（后者是通过所有 Block 后的最终隐藏状态，论文 SAFE 所用的 internal features）。
         #print("encoded.shape:", encoded.shape)
         # ------- Steer with external head activations --------
         # 期望 delta_heads 形状为 (H, D)，由 Module.scan 在第 0 维按层分发。
@@ -239,12 +242,21 @@ class Attention(nn.Module):
 
         # Chancharik Added Attention Head Output Returns:
         # return self.attn_vec_einsum("BTNH,NHD->BTD", encoded), kv_cache
+        # 如需返回注意力头的输出激活（而非注意力概率），这里直接返回上述按头拼接后的 encoded。
         attention_heads = encoded if return_attention_heads else None
+
+        # 新增：返回当前查询位置的注意力概率分布（按头展平）：shape [B, n_heads, S]
+        if return_attention_probs:
+            # probs shape: [B, K, G, T, S]; 取最后一个查询位置（当前 token）
+            probs_last = probs[:, :, :, -1, :]  # [B, K, G, S]
+            attention_probs = einops.rearrange(probs_last, "B K G S -> B (K G) S")
+        else:
+            attention_probs = None
         
         output = self.attn_vec_einsum("BTNH,NHD->BTD", encoded)
         
-        if return_attention_heads:
-            return output, kv_cache, attention_heads
+        if return_attention_heads or return_attention_probs:
+            return output, kv_cache, attention_heads, attention_probs
         else:
             return output, kv_cache
         
@@ -284,7 +296,7 @@ class Block(nn.Module):
         else:
             self.drop = lambda x, _: x
 
-    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True, return_attention_heads=False, delta_heads=None):  # noqa: FBT002 # Chancharik added attention head output returns
+    def __call__(self, x, kv_cache, positions, attn_mask, decode, deterministic=True, return_attention_heads=False, return_attention_probs=False, delta_heads=None):  # noqa: FBT002 # Chancharik added attention head/prob outputs
         x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
         # Chancharik - Added att head functionality
 
@@ -301,22 +313,23 @@ class Block(nn.Module):
 
         inputs_normalized = self.pre_attention_norm(x)
         
-        if return_attention_heads:
-            attn_output, kv_cache, attention_heads = self.attn(
-                inputs_normalized, positions, attn_mask, kv_cache, decode, deterministic, return_attention_heads=True, delta_heads=delta_heads
-            )
+        attn_call_result = self.attn(
+            inputs_normalized,
+            positions,
+            attn_mask,
+            kv_cache,
+            decode,
+            deterministic,
+            return_attention_heads=return_attention_heads,
+            return_attention_probs=return_attention_probs,
+            delta_heads=delta_heads,
+        )
+        if return_attention_heads or return_attention_probs:
+            attn_output, kv_cache, attention_heads, attention_probs = attn_call_result
         else:
-            attn_output, kv_cache = self.attn(
-                inputs_normalized,
-                positions,
-                attn_mask,
-                kv_cache,
-                decode,
-                deterministic,
-                return_attention_heads=False,
-                delta_heads=delta_heads,
-            )
+            attn_output, kv_cache = attn_call_result
             attention_heads = None
+            attention_probs = None
             
         attn_output = self.drop(attn_output, deterministic)
         attn_output += x
@@ -326,8 +339,8 @@ class Block(nn.Module):
         outputs = self.drop(outputs, deterministic)
         outputs = residual + outputs
         
-        if return_attention_heads:
-            return outputs, (kv_cache, attention_heads)
+        if return_attention_heads or return_attention_probs:
+            return outputs, (kv_cache, attention_heads, attention_probs)
         else:
             return outputs, kv_cache
 
@@ -373,6 +386,7 @@ class Module(nn.Module):
         deterministic=True,  # noqa: FBT002
         return_prelogits=False,  # noqa: FBT002
         return_attention_heads=False,  # Chancharik - NEW PARAMETER
+        return_attention_probs=False,
         delta_heads=None,
     ):
         """Embed only, or complete forward pass.
@@ -394,7 +408,7 @@ class Module(nn.Module):
           If `embed_only=True`, then the embeddings will be returned.
           If `return_prelogits=True`, then the pre-logits will be returned.
         """
-        activation_flag = return_attention_heads
+        activation_flag = return_attention_heads or return_attention_probs
         out = {}
 
         embedder = Embedder(vocab_size=self.vocab_size, embed_dim=self.width, name="embedder")
@@ -439,7 +453,7 @@ class Module(nn.Module):
             block_cls = nn.remat(
                 Block,
                 prevent_cse=not self.scan,
-                static_argnums=(5, 6, 7),  # 0=self, 5=decode, 6=deterministic, Chancharik - 7=return_attention_heads
+                static_argnums=(5, 6, 7, 8),  # 0=self, 5=decode, 6=deterministic, 7=return_attention_heads, 8=return_attention_probs
                 policy=getattr(jax.checkpoint_policies, self.remat_policy),
             )
 
@@ -460,23 +474,31 @@ class Module(nn.Module):
                 block_cls,
                 variable_axes={"params": 0},
                 split_rngs={"params": True, "dropout": True},
-                # 依次对应: kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads
-                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, 0),
+                # 依次对应: kv_cache, positions, mask, decode, deterministic, return_attention_heads, return_attention_probs, delta_heads
+                in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, 0),
                 length=self.depth,
             )(parent=layers, **block_kw)
         ]
         # Chancharik - collect attention_head_outputs
         all_attention_heads = []
+        all_attention_probs = []
         if activation_flag:
             for block in blocks:
-                x, (kv_cache, attention_heads) = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads)
-                all_attention_heads.append(attention_heads)
+                x, (kv_cache, attention_heads, attention_probs) = block(
+                    x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, return_attention_probs, delta_heads
+                )
+                if return_attention_heads:
+                    all_attention_heads.append(attention_heads)
+                if return_attention_probs:
+                    all_attention_probs.append(attention_probs)
         else:
             for block in blocks:
-                x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, delta_heads)
+                x, kv_cache = block(x, kv_cache, positions, mask, decode, deterministic, return_attention_heads, return_attention_probs, delta_heads)
 
 
         assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
+        # 注意：Module 级别的 out["encoded"] 是“通过所有 Transformer Blocks 后”的最终隐藏状态（每 token 的特征，shape: [B, T, D]），
+        # 对应论文中用于 SAFE 的 internal features 的一种取法（另一种为 out["pre_logits"]；两者均在词表解码前）。
         out["encoded"] = x
 
         x = RMSNorm(name="final_norm")(x)
@@ -485,8 +507,13 @@ class Module(nn.Module):
         # Chancharik - return attention heads
         if return_attention_heads:
             # print("all_attention_heads.shape:", all_attention_heads[0].shape)
-            out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # Shape: [n_layers, batch, seq_len, n_heads, head_dim]
-            # print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
+            out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # 这里返回的是各层的注意力头输出激活（不是注意力概率）。Shape: [n_layers, batch, seq_len, n_heads, head_dim]
+            print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
+        if return_attention_probs:
+            # 注意：这里返回的是各层、当前查询位置（最后一个 token）的注意力概率，按头展平。
+            # 形状: [n_layers, batch, n_heads, S]
+            out["attention_probs"] = jnp.stack(all_attention_probs, axis=0)
+            print("out['attention_probs'].shape:", out["attention_probs"].shape)
 
         if return_prelogits:
             return x, kv_cache, out

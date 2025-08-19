@@ -11,9 +11,9 @@ import random
 import h5py  # type: ignore
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new_lora_tune_20_margin.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "pick_prefix_debug.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
-MAX_EPISODES = 250
+MAX_EPISODES = 1
 USE_KEYFRAME = True
 # from tasks import Pick_training_tasks
 from openpi.llm_instruction_verb_filter import instruction_matches_prompt
@@ -188,7 +188,7 @@ with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
                 obs = ep_data["observations"][frame_idx]
                 act = ep_data["actions"][frame_idx]
                 true_frame_idx = frame_idx + 1                # 仍保持 1‑based 路径编号
-                outputs, attention_outputs = policy.infer(obs, return_attention_heads=True)
+                outputs, attention_outputs = policy.infer(obs, return_attention_heads=True, return_attention_probs=True)
                 # HDF5 路径： /task/episode_xxx/frame_xxxx/
                 grp_path = f"{task_name}/episode_{ep_idx:03d}/frame_{frame_idx:04d}"
                 grp = h5_out.require_group(grp_path)  # 创建层级
@@ -207,6 +207,32 @@ with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
                     data=last_token_attn,
                     compression="gzip",
                 )
+
+                # 可选：保存前缀阶段的注意力概率（每层每头对序列位置的分布）
+                prefill_probs = attention_outputs.get("llm_attn_probs_prefill") #(18, 1, 8, 1018)
+                print("prefill_probs.shape:", prefill_probs.shape)
+                if prefill_probs is not None:
+                    prefill_probs = np.asarray(prefill_probs, dtype=np.float32)
+                    if "attn_probs_prefill" in grp:
+                        del grp["attn_probs_prefill"]
+                    grp.create_dataset(
+                        "attn_probs_prefill",
+                        data=prefill_probs,
+                        compression="gzip",
+                    )
+
+                # 可选：保存解码阶段（动作 token 序列）的注意力概率轨迹
+                decode_probs = attention_outputs.get("llm_attn_probs_decode") #(1, 256, 18, 8, 1274)
+                print("decode_probs.shape:", decode_probs.shape)
+                if decode_probs is not None:
+                    decode_probs = np.asarray(decode_probs, dtype=np.float32)
+                    if "attn_probs_decode" in grp:
+                        del grp["attn_probs_decode"]
+                    grp.create_dataset(
+                        "attn_probs_decode",
+                        data=decode_probs,
+                        compression="gzip",
+                    )
 
                 # 记录元信息方便追溯
                 grp.attrs["full_llm_shape"] = full_attn.shape

@@ -39,7 +39,7 @@ class Policy(BasePolicy):
         self._metadata = metadata or {}
 
     @override
-    def infer(self, obs: dict, return_attention_heads: bool=False, delta_heads=None) -> dict | tuple[dict, dict]:
+    def infer(self, obs: dict, return_attention_heads: bool=False, return_attention_probs: bool=False, delta_heads=None) -> dict | tuple[dict, dict]:
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
@@ -48,8 +48,15 @@ class Policy(BasePolicy):
 
         start_time = time.monotonic()
         self._rng, sample_rng = jax.random.split(self._rng)
-        if return_attention_heads:
-            actions, attention_outputs, last_token_idx = self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, delta_heads=delta_heads, **self._sample_kwargs)
+        if return_attention_heads or return_attention_probs:
+            actions, attention_outputs, last_token_idx = self._sample_actions(
+                sample_rng,
+                _model.Observation.from_dict(inputs),
+                return_attention_heads=return_attention_heads,
+                return_attention_probs=return_attention_probs,
+                delta_heads=delta_heads,
+                **self._sample_kwargs,
+            )
             outputs = {
                 "state": inputs["state"],
                 "actions": actions,
@@ -57,7 +64,12 @@ class Policy(BasePolicy):
         else:
             outputs = {
                 "state": inputs["state"],
-                "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), return_attention_heads=return_attention_heads, **self._sample_kwargs),
+                "actions": self._sample_actions(
+                    sample_rng,
+                    _model.Observation.from_dict(inputs),
+                    return_attention_heads=return_attention_heads,
+                    **self._sample_kwargs,
+                ),
             }
         
         # Unbatch and convert to np.ndarray.
@@ -69,7 +81,7 @@ class Policy(BasePolicy):
             "infer_ms": model_time * 1000,
         }
         
-        if return_attention_heads:
+        if return_attention_heads or return_attention_probs:
             # Process attention outputs - unbatch them - maybe not necessary
             # processed_attention = {}
             # if attention_outputs and "llm_activations" in attention_outputs and attention_outputs["llm_activations"] is not None:

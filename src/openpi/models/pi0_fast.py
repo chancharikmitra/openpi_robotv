@@ -243,6 +243,7 @@ class Pi0FAST(_model.BaseModel):
         max_decoding_steps: int | at.Int[at.Array, ""] = 256,
         temperature: float = 0.0,
         return_attention_heads: bool=False,
+        return_attention_probs: bool=False,
         delta_heads: at.Float[at.Array, "b s h"] | None = None
     ) -> _model.Actions | tuple[_model.Actions, dict, at.Int[at.Array, "b"]]:
         # TODO: this is a hack to get the image keys.
@@ -270,20 +271,40 @@ class Pi0FAST(_model.BaseModel):
         prefix_attn_mask = jnp.pad(prefix_attn_mask, ((0, 0), (0, 0), (0, max_decoding_steps)))
         prefix_positions = jnp.cumsum(prefix_mask, axis=-1) - 1
         prefix_logits, kv_cache, prefill_out = self.PaliGemma.llm(
-            embedded_prefix=prefix_token_embeddings, mask=prefix_attn_mask, positions=prefix_positions, decode=True, return_attention_heads=return_attention_heads, delta_heads=delta_heads
+            embedded_prefix=prefix_token_embeddings,
+            mask=prefix_attn_mask,
+            positions=prefix_positions,
+            decode=True,
+            return_attention_heads=return_attention_heads,
+            return_attention_probs=return_attention_probs,
+            delta_heads=delta_heads,
         )
 
         if return_attention_heads:
             attention_outputs = {
                 "llm_activations": prefill_out.get("attention_heads", None),
             }
+        else:
+            attention_outputs = {}
+        if return_attention_probs:
+            prefill_probs = prefill_out.get("attention_probs", None)
+            if prefill_probs is not None:
+                # Module returns shape [1, depth, B, n_heads, S] due to scan; drop leading dim to get [depth, B, n_heads, S]
+                if prefill_probs.ndim == 5:
+                    prefill_probs = prefill_probs[0]
+                # Keep only actual prefix keys (exclude padded future decode slots)
+                prefill_probs = prefill_probs[..., :prefill_size]
+            attention_outputs["llm_attn_probs_prefill"] = prefill_probs
 
         # prepare decoding -- final logit decodes the first token
         last_logit = prefix_logits[:, -1:]
         output_tokens = jnp.zeros((last_logit.shape[0], max_decoding_steps))
 
         def step(carry):
-            rng, last_logit, output_tokens, cache, _, step = carry
+            if return_attention_probs:
+                rng, last_logit, output_tokens, cache, attn_probs_decode, _, step = carry
+            else:
+                rng, last_logit, output_tokens, cache, _, step = carry
 
             # Sample token from last logit
             # Split RNG for this step
@@ -308,22 +329,58 @@ class Pi0FAST(_model.BaseModel):
                 jnp.arange(prefill_size + max_decoding_steps)[None, None, :]
                 < (jnp.broadcast_to(prefill_size + step + 1, (prefix_start.shape[0], 1, 1))),
             )
-            last_logit, kv_cache, _ = self.PaliGemma.llm(
-                embedded_prefix=token_embedding, mask=mask, positions=positions, decode=True, kv_cache=cache
+            last_logit, kv_cache, out = self.PaliGemma.llm(
+                embedded_prefix=token_embedding,
+                mask=mask,
+                positions=positions,
+                decode=True,
+                kv_cache=cache,
+                return_attention_probs=return_attention_probs,
             )
+
+            if return_attention_probs:
+                # out["attention_probs"] shape: [1, depth, B, n_heads, S] (scan leading dim)
+                probs = out.get("attention_probs")
+                if probs is not None:
+                    if probs.ndim == 5:
+                        probs = probs[0]  # [depth, B, n_heads, S]
+                    # transpose to [B, depth, n_heads, S] to match attn_probs_decode[:, step, ...]
+                    probs = jnp.transpose(probs, (1, 0, 2, 3))
+                    attn_probs_decode = attn_probs_decode.at[:, step, ...].set(probs)
+                return rng, last_logit, output_tokens, kv_cache, attn_probs_decode, all_eos, step + 1
 
             return rng, last_logit, output_tokens, kv_cache, all_eos, step + 1
 
         def cond(carry):
-            _, _, _, _, all_eos, step = carry
+            if return_attention_probs:
+                _, _, _, _, _, all_eos, step = carry
+            else:
+                _, _, _, _, all_eos, step = carry
             return (~all_eos) & (step < max_decoding_steps)
 
         # Use lax.while_loop so we can jit the full decoding loop.
-        _, output_tokens, _, _, final_step = jax.lax.while_loop(cond, step, (last_logit, output_tokens, kv_cache, False, 0))
+        if return_attention_probs:
+            depth = self.PaliGemma.llm.module.depth
+            num_heads = self.PaliGemma.llm.module.num_heads
+            total_S = prefill_size + max_decoding_steps
+            attn_probs_decode = jnp.zeros((last_logit.shape[0], max_decoding_steps, depth, num_heads, total_S), dtype=jnp.float32)
+            _, _, output_tokens, _, attn_probs_decode, _, final_step = jax.lax.while_loop(
+                cond, step, (rng, last_logit, output_tokens, kv_cache, attn_probs_decode, False, 0)
+            )
+        else:
+            _, _, output_tokens, _, _, final_step = jax.lax.while_loop(
+                cond, step, (rng, last_logit, output_tokens, kv_cache, False, 0)
+            )
         
         if return_attention_heads:
             # last_token_idx = jnp.maximum(0, final_step - 1)
             # attention_outputs["last_token_idx"] = last_token_idx
+            if return_attention_probs:
+                attention_outputs["llm_attn_probs_decode"] = attn_probs_decode
             return output_tokens, attention_outputs, jnp.maximum(0, final_step - 1)
         else:
-            return output_tokens
+            if return_attention_probs:
+                attention_outputs["llm_attn_probs_decode"] = attn_probs_decode
+                return output_tokens, attention_outputs, jnp.maximum(0, final_step - 1)
+            else:
+                return output_tokens
