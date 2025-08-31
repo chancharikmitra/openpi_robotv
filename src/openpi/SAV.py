@@ -283,8 +283,8 @@ def run_sav(h5_path, pos_eps, neg_eps, k=20, agg="mean", sel_metric: str = "accu
     else:
         raise ValueError("sel_metric must be 'accuracy' or 'diff'")
 
-    #heads = select_top_heads(score, k)
-    heads = select_bottom_heads(score, k)
+    heads = select_top_heads(score, k)
+    #heads = select_bottom_heads(score, k)
     # ---- statistics ----------------------------------------------------
     print(f"🎯 Top-{k} heads ({sel_metric}) : {heads}")
 
@@ -363,6 +363,7 @@ def compute_votes_per_sample(
 
     # head sampling
     heads = np.asarray(sel_heads)
+    # heads = np.array([50, 74, 100, 73, 59, 64, 68, 95, 49, 91, 42, 60, 102, 58, 86, 130, 76, 62, 88, 61])
     # if sample_k is not None and heads.shape[0] > sample_k:
     #     np.random.seed(1)
     #     heads = heads[np.random.choice(heads.shape[0], size=sample_k, replace=False)]
@@ -453,7 +454,7 @@ def save_selected_head_activations(
 # ------------------------------------------------------------
 # 7.1  Sample support set
 all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
-
+print(len(all_pos), len(all_neg))
 random.seed(42)
 support_pos = random.sample(all_pos, 20)
 support_neg = random.sample(all_neg, 20)    
@@ -566,6 +567,5 @@ def plot_sav_head_heatmap(sav_model: dict, title: str | None = None):
 
     plot_head_heatmap(values, sel_heads, title=title,
                       cmap=cmap, vmin=vmin, vmax=vmax)
-
-plot_sav_head_heatmap(sav_model)
+# plot_sav_head_heatmap(sav_model)
 

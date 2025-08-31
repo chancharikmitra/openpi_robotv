@@ -11,13 +11,15 @@ import random
 import h5py  # type: ignore
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "pick_prefix_debug.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
-MAX_EPISODES = 1
+MAX_EPISODES = 300
 USE_KEYFRAME = True
 # from tasks import Pick_training_tasks
 from openpi.llm_instruction_verb_filter import instruction_matches_prompt
 LLM_PROMPT_KEY = "pick_place"
+# 若只想在已生成的注意力文件上追加动作标签而不重算激活，请置 True
+APPEND_ACTION_LABELS_ONLY = False
 # 1) 取模型定义 & 权重 ----------------------------------------------------------
 from openpi.training import config
 from openpi.policies import policy_config
@@ -96,8 +98,8 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
     with h5py.File(h5_path, "r") as f:
         for task_name in f:  # 第一层：任务
-            # if not instruction_matches_prompt(task_name, prompt_key=LLM_PROMPT_KEY):
-            #     continue
+            if not instruction_matches_prompt(task_name, prompt_key=LLM_PROMPT_KEY):
+                continue
             print("task_name:",task_name)
             grp = f[task_name]  # type: ignore[index]
 
@@ -120,6 +122,8 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                     f"{ep_prefix}_joint_positions",
                     f"{ep_prefix}_view_0",
                     f"{ep_prefix}_view_2",
+                    # f"{ep_prefix}_act_joint_pos",
+                    # f"{ep_prefix}_act_gripper_pos",
                 ]
 
                 if not all(k in grp for k in required):  # type: ignore[operator]
@@ -130,8 +134,11 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                 joint_arr     = grp[f"{ep_prefix}_joint_positions"][:]  # type: ignore[index]
                 img_primary   = grp[f"{ep_prefix}_view_0"][:]  # type: ignore[index]
                 img_wrist     = grp[f"{ep_prefix}_view_2"][:]  # type: ignore[index]
+                # act_joint_pos = grp[f"{ep_prefix}_act_joint_pos"][:]  # type: ignore[index]
+                # act_gripper_pos = grp[f"{ep_prefix}_act_gripper_pos"][:]  # type: ignore[index]
                 obs_list: list[dict] = []
                 act_list: list[np.ndarray] = []
+                # action_dict_list: list[dict] = []
 
                 for frame_idx in range(actions_arr.shape[0]):  # type: ignore[attr-defined]
                     obs_list.append({
@@ -142,10 +149,15 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                         "prompt": task_name,
                     })
                     act_list.append(actions_arr[frame_idx])  # type: ignore[arg-type]
+                    # action_dict_list.append({
+                    #     "act_joint_pos": act_joint_pos[frame_idx],
+                    #     "act_gripper_pos": act_gripper_pos[frame_idx],
+                    # })
 
                 episodes[idx] = {  # type: ignore[index]
                     "observations": obs_list,
                     "actions": act_list,
+                    # "action_dict_list": action_dict_list,
                 }
 
                 processed += 1
@@ -161,11 +173,12 @@ def extract_observations(h5_path, max_episodes: int | None = None):
     return data
 
 # 用法
-h5_path = "/scr2/yusenluo/openpi/SAV_training/pick_train_new.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5" #"/scr2/yusenluo/openpi/SAV_training/pick_train.h5" 
+h5_path = "/scr2/yusenluo/openpi/SAV_training/pick_train.h5" #"/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # 遍历并推理，同时打印当前进度：
-with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
+file_mode = "a" if APPEND_ACTION_LABELS_ONLY else "w"
+with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # 在退出时自动 flush & close
     ep_counter = 0  # 统计已写入的 episode 数
     for task_name, eps in dataset.items():
         for ep_idx, ep_data in eps.items():
@@ -188,9 +201,36 @@ with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
                 obs = ep_data["observations"][frame_idx]
                 act = ep_data["actions"][frame_idx]
                 true_frame_idx = frame_idx + 1                # 仍保持 1‑based 路径编号
-                outputs, attention_outputs = policy.infer(obs, return_attention_heads=True, return_attention_probs=True)
                 # HDF5 路径： /task/episode_xxx/frame_xxxx/
                 grp_path = f"{task_name}/episode_{ep_idx:03d}/frame_{frame_idx:04d}"
+
+                # 仅在已存在的分组上追加动作标签；不重算注意力
+                if APPEND_ACTION_LABELS_ONLY:
+                    if grp_path not in h5_out:
+                        continue  # 仅补齐已有样本，避免创建新帧组
+                    grp = h5_out[grp_path]
+                    action_arr = np.asarray(act, dtype=np.float32)
+                    if "action_label" in grp:
+                        del grp["action_label"]
+                    grp.create_dataset(
+                        "action_label",
+                        data=action_arr,
+                        compression="gzip",
+                    )
+                    # 写入 7+1 维的 pi_droid_action（关节7维 + 抓手1维）
+                    act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
+                    act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
+                    pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
+                    if "pi_droid_action" in grp:
+                        del grp["pi_droid_action"]
+                    grp.create_dataset(
+                        "pi_droid_action",
+                        data=pi_droid_action,
+                        compression="gzip",
+                    )
+                    continue
+
+                outputs, attention_outputs = policy.infer(obs, return_attention_heads=True, return_attention_probs=True)
                 grp = h5_out.require_group(grp_path)  # 创建层级
 
                 # 只保留最后一个 token 的注意力：(layer, head, dim) = (18, 8, 256)
@@ -238,6 +278,28 @@ with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
                 grp.attrs["full_llm_shape"] = full_attn.shape
                 grp.attrs["last_token_idx"] = int(attention_outputs["last_token_idx"])  # type: ignore[arg-type]
 
+                # 同时写入动作标签（7维）与拼接后的 pi_droid_action（8维）
+                action_arr = np.asarray(act, dtype=np.float32)
+                if "action_label" in grp:
+                    del grp["action_label"]
+                grp.create_dataset(
+                    "action_label",
+                    data=action_arr,
+                    compression="gzip",
+                )
+
+                # act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
+                # act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
+                # pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
+                # assert pi_droid_action.shape == (8,)
+                # if "pi_droid_action" in grp:
+                #     del grp["pi_droid_action"]
+                # grp.create_dataset(
+                #     "pi_droid_action",
+                #     data=pi_droid_action,
+                #     compression="gzip",
+                # )
+
             # —— 一个 episode 写完 ——
             ep_counter += 1
             if ep_counter % 50 == 0:
@@ -247,7 +309,7 @@ with h5py.File(ATTN_H5_PATH, "w") as h5_out:  # 在退出时自动 flush & close
         # —— 一个 task 写完 ——
         print(f"Finished task {task_name} – {len(eps)} episodes processed.")
         h5_out.flush()
-
+print("done")
 # 一个 episode 完成
 
 #print(policy.infer)
