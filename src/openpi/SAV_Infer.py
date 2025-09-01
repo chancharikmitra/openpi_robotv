@@ -13,7 +13,7 @@ import h5py  # type: ignore
 # 如果希望输出到不同路径，可修改此处
 ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
-MAX_EPISODES = 300
+MAX_EPISODES = 400
 USE_KEYFRAME = True
 # from tasks import Pick_training_tasks
 from openpi.llm_instruction_verb_filter import instruction_matches_prompt
@@ -122,8 +122,8 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                     f"{ep_prefix}_joint_positions",
                     f"{ep_prefix}_view_0",
                     f"{ep_prefix}_view_2",
-                    # f"{ep_prefix}_act_joint_pos",
-                    # f"{ep_prefix}_act_gripper_pos",
+                    f"{ep_prefix}_act_joint_pos",
+                    f"{ep_prefix}_act_gripper_pos",
                 ]
 
                 if not all(k in grp for k in required):  # type: ignore[operator]
@@ -134,11 +134,11 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                 joint_arr     = grp[f"{ep_prefix}_joint_positions"][:]  # type: ignore[index]
                 img_primary   = grp[f"{ep_prefix}_view_0"][:]  # type: ignore[index]
                 img_wrist     = grp[f"{ep_prefix}_view_2"][:]  # type: ignore[index]
-                # act_joint_pos = grp[f"{ep_prefix}_act_joint_pos"][:]  # type: ignore[index]
-                # act_gripper_pos = grp[f"{ep_prefix}_act_gripper_pos"][:]  # type: ignore[index]
+                act_joint_pos = grp[f"{ep_prefix}_act_joint_pos"][:]  # type: ignore[index]
+                act_gripper_pos = grp[f"{ep_prefix}_act_gripper_pos"][:]  # type: ignore[index]
                 obs_list: list[dict] = []
                 act_list: list[np.ndarray] = []
-                # action_dict_list: list[dict] = []
+                action_dict_list: list[dict] = []
 
                 for frame_idx in range(actions_arr.shape[0]):  # type: ignore[attr-defined]
                     obs_list.append({
@@ -149,15 +149,15 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                         "prompt": task_name,
                     })
                     act_list.append(actions_arr[frame_idx])  # type: ignore[arg-type]
-                    # action_dict_list.append({
-                    #     "act_joint_pos": act_joint_pos[frame_idx],
-                    #     "act_gripper_pos": act_gripper_pos[frame_idx],
-                    # })
+                    action_dict_list.append({
+                        "act_joint_pos": act_joint_pos[frame_idx],
+                        "act_gripper_pos": act_gripper_pos[frame_idx],
+                    })
 
                 episodes[idx] = {  # type: ignore[index]
                     "observations": obs_list,
                     "actions": act_list,
-                    # "action_dict_list": action_dict_list,
+                    "action_dict_list": action_dict_list,
                 }
 
                 processed += 1
@@ -173,7 +173,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
     return data
 
 # 用法
-h5_path = "/scr2/yusenluo/openpi/SAV_training/pick_train.h5" #"/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5"
+h5_path = "/scr2/yusenluo/openpi/droid_pick_eval_positive_400_with_action.h5" #"/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # 遍历并推理，同时打印当前进度：
@@ -249,30 +249,30 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # 在退出时自动 flush &
                 )
 
                 # 可选：保存前缀阶段的注意力概率（每层每头对序列位置的分布）
-                prefill_probs = attention_outputs.get("llm_attn_probs_prefill") #(18, 1, 8, 1018)
-                print("prefill_probs.shape:", prefill_probs.shape)
-                if prefill_probs is not None:
-                    prefill_probs = np.asarray(prefill_probs, dtype=np.float32)
-                    if "attn_probs_prefill" in grp:
-                        del grp["attn_probs_prefill"]
-                    grp.create_dataset(
-                        "attn_probs_prefill",
-                        data=prefill_probs,
-                        compression="gzip",
-                    )
+                # prefill_probs = attention_outputs.get("llm_attn_probs_prefill") #(18, 1, 8, 1018)
+                # print("prefill_probs.shape:", prefill_probs.shape)
+                # if prefill_probs is not None:
+                #     prefill_probs = np.asarray(prefill_probs, dtype=np.float32)
+                #     if "attn_probs_prefill" in grp:
+                #         del grp["attn_probs_prefill"]
+                #     grp.create_dataset(
+                #         "attn_probs_prefill",
+                #         data=prefill_probs,
+                #         compression="gzip",
+                #     )
 
                 # 可选：保存解码阶段（动作 token 序列）的注意力概率轨迹
-                decode_probs = attention_outputs.get("llm_attn_probs_decode") #(1, 256, 18, 8, 1274)
-                print("decode_probs.shape:", decode_probs.shape)
-                if decode_probs is not None:
-                    decode_probs = np.asarray(decode_probs, dtype=np.float32)
-                    if "attn_probs_decode" in grp:
-                        del grp["attn_probs_decode"]
-                    grp.create_dataset(
-                        "attn_probs_decode",
-                        data=decode_probs,
-                        compression="gzip",
-                    )
+                # decode_probs = attention_outputs.get("llm_attn_probs_decode") #(1, 256, 18, 8, 1274)
+                # print("decode_probs.shape:", decode_probs.shape)
+                # if decode_probs is not None:
+                #     decode_probs = np.asarray(decode_probs, dtype=np.float32)
+                #     if "attn_probs_decode" in grp:
+                #         del grp["attn_probs_decode"]
+                #     grp.create_dataset(
+                #         "attn_probs_decode",
+                #         data=decode_probs,
+                #         compression="gzip",
+                #     )
 
                 # 记录元信息方便追溯
                 grp.attrs["full_llm_shape"] = full_attn.shape
@@ -288,17 +288,17 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # 在退出时自动 flush &
                     compression="gzip",
                 )
 
-                # act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
-                # act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
-                # pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
-                # assert pi_droid_action.shape == (8,)
-                # if "pi_droid_action" in grp:
-                #     del grp["pi_droid_action"]
-                # grp.create_dataset(
-                #     "pi_droid_action",
-                #     data=pi_droid_action,
-                #     compression="gzip",
-                # )
+                act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
+                act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
+                pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
+                assert pi_droid_action.shape == (8,)
+                if "pi_droid_action" in grp:
+                    del grp["pi_droid_action"]
+                grp.create_dataset(
+                    "pi_droid_action",
+                    data=pi_droid_action,
+                    compression="gzip",
+                )
 
             # —— 一个 episode 写完 ——
             ep_counter += 1

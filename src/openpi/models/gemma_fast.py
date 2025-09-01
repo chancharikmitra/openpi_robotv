@@ -223,31 +223,35 @@ class Attention(nn.Module):
 
         encoded = jnp.einsum("BKGTS,BSKH->BTKGH", probs, v)
         encoded = einops.rearrange(encoded, "B T K G H -> B T (K G) H")
-        # 注意：此处的 encoded 是“按注意力头拼接后的头输出”（shape: [B, T, n_heads, head_dim]，其中 n_heads=K*G），
-        # 用于再经 attn_vec_einsum 投影回 [B, T, D]。它不是注意力概率分布；
-        # 同时它也不同于 Module 级别的 out["encoded"]（后者是通过所有 Block 后的最终隐藏状态，论文 SAFE 所用的 internal features）。
+        # Note: 'encoded' here is the concatenated per-head output
+        # (shape: [B, T, n_heads, head_dim], where n_heads = K * G).
+        # It is projected back to [B, T, D] via attn_vec_einsum and is not
+        # an attention probability. It also differs from the Module-level
+        # out["encoded"], which is the final hidden state after all Blocks
+        # (the internal features used in SAFE) prior to vocabulary decoding.
         #print("encoded.shape:", encoded.shape)
         # ------- Steer with external head activations --------
-        # 期望 delta_heads 形状为 (H, D)，由 Module.scan 在第 0 维按层分发。
+        # Expected delta_heads shape is (H, D), dispatched per layer along axis 0 by Module.scan.
         if delta_heads is not None:
             if delta_heads.ndim != 2:
-                raise ValueError("delta_heads 应为 (H,D)，实际 shape=" + str(delta_heads.shape))
+                raise ValueError("delta_heads must be (H, D), got shape=" + str(delta_heads.shape))
             # print("delta_heads.shape:", delta_heads.shape)
-            # 只影响最后一个 prefix token
+            # Only affect the last prefix token
             encoded = encoded.at[:, -1, :, :].add(delta_heads.astype(encoded.dtype))
             #print("encoded.shape:", encoded.shape)
-            # debug.print("layer {l}: delta added", l=positions[0,0])   # 或任何能代表层号的标量
+            # debug.print("layer {l}: delta added", l=positions[0,0])   # or any scalar representing the layer index
         # =================================
 
 
         # Chancharik Added Attention Head Output Returns:
         # return self.attn_vec_einsum("BTNH,NHD->BTD", encoded), kv_cache
-        # 如需返回注意力头的输出激活（而非注意力概率），这里直接返回上述按头拼接后的 encoded。
+        # If returning attention head activations (instead of probabilities), return the concatenated 'encoded'.
         attention_heads = encoded if return_attention_heads else None
 
-        # 新增：返回当前查询位置的注意力概率分布（按头展平）：shape [B, n_heads, S]
+        # Additionally, return attention probabilities at the current query position
+        # (heads flattened): shape [B, n_heads, S]
         if return_attention_probs:
-            # probs shape: [B, K, G, T, S]; 取最后一个查询位置（当前 token）
+            # probs shape: [B, K, G, T, S]; take the last query position (current token)
             probs_last = probs[:, :, :, -1, :]  # [B, K, G, S]
             attention_probs = einops.rearrange(probs_last, "B K G S -> B (K G) S")
         else:
@@ -474,7 +478,8 @@ class Module(nn.Module):
                 block_cls,
                 variable_axes={"params": 0},
                 split_rngs={"params": True, "dropout": True},
-                # 依次对应: kv_cache, positions, mask, decode, deterministic, return_attention_heads, return_attention_probs, delta_heads
+                # in_axes correspond to: kv_cache, positions, mask, decode, deterministic,
+                # return_attention_heads, return_attention_probs, delta_heads
                 in_axes=(0, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, nn.broadcast, 0),
                 length=self.depth,
             )(parent=layers, **block_kw)
@@ -497,8 +502,9 @@ class Module(nn.Module):
 
 
         assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
-        # 注意：Module 级别的 out["encoded"] 是“通过所有 Transformer Blocks 后”的最终隐藏状态（每 token 的特征，shape: [B, T, D]），
-        # 对应论文中用于 SAFE 的 internal features 的一种取法（另一种为 out["pre_logits"]；两者均在词表解码前）。
+        # Note: Module-level out["encoded"] is the final hidden state after all Transformer Blocks
+        # (per-token features, shape: [B, T, D]), which corresponds to one form of the internal
+        # features used in the SAFE paper (another is out["pre_logits"]). Both are computed before vocab decoding.
         out["encoded"] = x
 
         x = RMSNorm(name="final_norm")(x)
@@ -507,11 +513,11 @@ class Module(nn.Module):
         # Chancharik - return attention heads
         if return_attention_heads:
             # print("all_attention_heads.shape:", all_attention_heads[0].shape)
-            out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # 这里返回的是各层的注意力头输出激活（不是注意力概率）。Shape: [n_layers, batch, seq_len, n_heads, head_dim]
+            out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # Per-layer attention head activations (not probabilities). Shape: [n_layers, batch, seq_len, n_heads, head_dim]
             print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
         if return_attention_probs:
-            # 注意：这里返回的是各层、当前查询位置（最后一个 token）的注意力概率，按头展平。
-            # 形状: [n_layers, batch, n_heads, S]
+            # Note: Returns attention probabilities for each layer at the current query position (last token),
+            # with heads flattened. Shape: [n_layers, batch, n_heads, S]
             out["attention_probs"] = jnp.stack(all_attention_probs, axis=0)
             print("out['attention_probs'].shape:", out["attention_probs"].shape)
 

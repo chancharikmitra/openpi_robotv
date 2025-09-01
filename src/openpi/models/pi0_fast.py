@@ -129,6 +129,19 @@ class Pi0FASTConfig(_model.BaseModelConfig):
         if "lora" in self.paligemma_variant:
             return nnx.All(nnx_utils.PathRegex(".*llm.*"), nnx.Not(nnx_utils.PathRegex(".*lora.*")))
         return nnx.Nothing
+    
+    def get_freeze_filter_with_frozen_img_encoder(self) -> nnx.filterlib.Filter:
+        """Returns the freeze filter based on the model config."""
+        if "lora" in self.paligemma_variant:
+            # Freeze both llm (except lora parts) and img components
+            return nnx.Any(
+                nnx.All(nnx_utils.PathRegex(".*llm.*"), nnx.Not(nnx_utils.PathRegex(".*lora.*"))),
+                nnx_utils.PathRegex(".*img.*")
+            )
+        else:
+            # freeze only image encoder
+            return nnx.All(nnx_utils.PathRegex(".*img.*"), nnx.Not(nnx_utils.PathRegex(".*llm.*")))
+        return nnx.Nothing
 
 
 class Pi0FAST(_model.BaseModel):

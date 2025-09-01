@@ -28,6 +28,7 @@ import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+import openpi.shared.nnx_utils as nnx_utils
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
@@ -776,10 +777,10 @@ _CONFIGS = [
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
-        ).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
+        ).get_freeze_filter_with_frozen_img_encoder(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=100,          
+            warmup_steps=200,          
             peak_lr=3e-4,              
             decay_steps=3_000,         
             decay_lr=3e-5,             
@@ -789,9 +790,10 @@ _CONFIGS = [
         batch_size=16,                
         num_workers=0,       
 
-        log_interval=1000,               
+        log_interval=500,               
         save_interval=1000,           
-        keep_period=1000,             
+        keep_period=1000, 
+        ema_decay=None,  # Turn off EMA for LoRA finetuning            
     ),
     TrainConfig(
         name="pi0_fast_droid_h5_full_finetune",
@@ -872,18 +874,24 @@ _CONFIGS = [
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
-            trainable_head_indices=[
-                (6, 5), (9, 3), (2, 7), (2, 4), (6, 4), (8, 7), (5, 7), (7, 1), (6, 7), (6, 1),
-                (7, 2), (6, 3), (5, 3), (1, 0), (10, 6), (11, 4), (9, 0), (8, 1), (3, 0), (12, 1)
-            ] 
-            # trainable_head_indices = [(0, 3), (17, 5), (17, 7), (17, 2), (17, 6), (0, 6), (17, 4), (17, 1), (17, 0), (16, 7), (17, 3), (0, 0), (16, 4), (16, 6), (16, 2), (16, 3), (16, 0), (0, 4), (16, 5), (16, 1)]
+            # trainable_head_indices=[
+            #     (6, 5), (9, 3), (2, 7), (2, 4), (6, 4), (8, 7), (5, 7), (7, 1), (6, 7), (6, 1),
+            #     (7, 2), (6, 3), (5, 3), (1, 0), (10, 6), (11, 4), (9, 0), (8, 1), (3, 0), (12, 1)
+            # ] # SAV best heads
+            trainable_head_indices = [(0, 3), (17, 5), (17, 7), (17, 2), (17, 6), (0, 6), (17, 4), (17, 1), (17, 0), (16, 7), (17, 3), (0, 0), (16, 4), (16, 6), (16, 2), (16, 3), (16, 0), (0, 4), (16, 5), (16, 1)]
         ),
         # Use LoRA freeze filter to freeze original weights, only train LoRA adapters
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
-        ).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(peak_lr=3e-4),
+        ).get_freeze_filter_with_frozen_img_encoder(),
+
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,          
+            peak_lr=3e-4,              
+            decay_steps=3_000,         
+            decay_lr=3e-5,             
+        ),
         # --- Key changes for debugging ---
         num_train_steps=10000,
         save_interval=1000,

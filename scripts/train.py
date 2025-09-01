@@ -99,21 +99,22 @@ def _create_masked_optimizer_for_head_tuning(
     mask_arrays = _optimizer._create_head_tuning_mask(trainable_params, config.optimizer.trainable_head_indices)
     logging.info(f"Generated mask has {len(mask_arrays)} top-level keys: {list(mask_arrays.keys())}")
     
-    # 4. 将掩码提前转成纯 dict，避免在 update 中重复转换
+    # 4. Convert the mask to a pure dict ahead of time to avoid repeated
+    #    conversions during the update step.
     mask_dict = nnx.State(mask_arrays).to_pure_dict()
 
     # 5. Define the wrapper for the update step.
     def masked_update_fn(updates, state, params=None):
-        # updates 已经是纯 dict（来自 optax）
+        # updates is already a pure dict (from optax)
         if hasattr(updates, "to_pure_dict"):
             updates_dict = updates.to_pure_dict()
         else:
-            updates_dict = updates  # 直接是 dict
+            updates_dict = updates  # already a dict
         
         # Apply mask in pure dict space
         masked_updates_dict = jax.tree_util.tree_map(lambda u, m: u * m, updates_dict, mask_dict)
         
-        # 基础优化器期望 dict
+        # Base optimizer expects a dict
         return base_optimizer.update(masked_updates_dict, state, params)
 
     # 6. Return the new wrapped optimizer.
@@ -208,7 +209,6 @@ def train_step(
     loss, grads = nnx.value_and_grad(loss_fn, argnums=diff_state)(model, train_rng, observation, actions)
 
     # DEBUG: Print the optimizer state structure at the first step
-    # 使用 JAX 兼容的条件判断
     jax.lax.cond(
         state.step == 0,
         lambda: jax.debug.print("Optimizer state structure: {opt_state}", opt_state=state.opt_state),
