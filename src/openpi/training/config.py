@@ -861,13 +861,13 @@ _CONFIGS = [
         ).get_freeze_filter_with_frozen_img_encoder(),
 
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
-        lr_schedule = _optimizer.CosineDecaySchedule(
+        lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
             peak_lr=1.0e-4,      
             decay_steps=2_700,  
             decay_lr=1.0e-5,  
-        )
-        num_train_steps=3000
+        ),
+        num_train_steps=3000,
         save_interval=500,
         keep_period=500,
         # ---------------------------------
