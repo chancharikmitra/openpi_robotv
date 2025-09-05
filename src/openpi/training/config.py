@@ -829,7 +829,7 @@ _CONFIGS = [
         name="pi0_fast_droid_h5_head_lora_tune_debug",
         model=pi0_fast.Pi0FASTConfig(
             action_dim=8,
-            action_horizon=16,
+            action_horizon=10,
             max_token_len=180,
             paligemma_variant="gemma_2b_lora",  # Enable LoRA variant
         ),
@@ -857,7 +857,7 @@ _CONFIGS = [
         ),
         # Use LoRA freeze filter to freeze original weights, only train LoRA adapters
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
+            action_dim=8, action_horizon=10, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter_with_frozen_img_encoder(),
 
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
