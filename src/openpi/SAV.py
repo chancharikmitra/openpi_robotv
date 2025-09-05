@@ -363,7 +363,7 @@ def compute_votes_per_sample(
 
     # head sampling
     heads = np.asarray(sel_heads)
-    # heads = np.array([50, 74, 100, 73, 59, 64, 68, 95, 49, 91, 42, 60, 102, 58, 86, 130, 76, 62, 88, 61])
+    #heads = np.array([64, 49, 116, 13, 9, 39, 113, 87, 58, 82, 54, 4, 10, 59, 109, 37, 77, 38, 28, 45]) 
     # if sample_k is not None and heads.shape[0] > sample_k:
     #     np.random.seed(1)
     #     heads = heads[np.random.choice(heads.shape[0], size=sample_k, replace=False)]

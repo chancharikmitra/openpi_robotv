@@ -5,7 +5,7 @@ class DroidActionSpace(Enum):
     JOINT_POSITION = auto()
     JOINT_VELOCITY = auto()
 
-# ---------------- episode generator 保持不变 ----------------
+# ---------------- episode generator ----------------
 def _episode_generator(h5_path):
     name_map = {"view_0":"exterior_image_1_left",
                 "view_1":"exterior_image_2_left",
@@ -55,7 +55,7 @@ class DroidH5Dataset:
     ):
         tf.config.set_visible_devices([], "GPU")
 
-        # 1. 生成 tf.data.Dataset（trajs）
+        # 1. Build tf.data.Dataset (trajectories)
         output_sig = {
             "observation":{
                 "joint_position"       : tf.TensorSpec((None,7), tf.float32),
@@ -81,18 +81,18 @@ class DroidH5Dataset:
             output_signature=output_sig,
         )
 
-        # ====== ↓ 原 DroidRldsDataset 流程，逐行沿用，但把 dlimp 调用改成 tf.data 原生 ======
+        # ====== Original DroidRldsDataset pipeline, adapted line-by-line; replace dlimp calls with native tf.data ======
 
         if shuffle:
             dataset = dataset.shuffle(buffer_size=20)
 
-        # 过滤成功轨迹
+        # Filter successful trajectories
         dataset = dataset.filter(
             lambda traj: tf.strings.regex_full_match(
                 traj["traj_metadata"]["episode_metadata"]["file_path"][0], ".*success.*")
         )
 
-        dataset = dataset.repeat()                         # 无限循环数据
+        dataset = dataset.repeat()                         # Repeat dataset indefinitely
 
         # --------- traj_map (restructure) ----------
         def restructure(traj):
@@ -107,6 +107,7 @@ class DroidH5Dataset:
                 lambda: traj["observation"]["exterior_image_2_left"],
             )
             wrist_img = traj["observation"]["wrist_image_left"]
+            # Optionally sample one of the language instruction fields at random:
             # instruction = tf.random.shuffle(
             #     [traj["language_instruction"],
             #      traj["language_instruction_2"],

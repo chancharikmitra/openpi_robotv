@@ -35,12 +35,12 @@ USE_PCA      = False
 USE_ZSCORE   = False             # per-head z-score normalization
 PCA_D        = 32                # per-head PCA dim; disable by setting USE_PCA=False
 DIST_METRIC  = "cosine"         # "cosine" | "euclidean" | "whiten" | "proj" | "pls"
-K_GRID       = [10, 15, 20]        # candidate k for KNN
+K_GRID       = [10,20,30,40]        # candidate k for KNN
 TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 
 # ---- Head selection mode and target ----
-HEAD_SELECTION_MODE = "topk"      # "topk" | "best_add" | "reinforce"
-TARGET_HEADS        = 20          # target number of heads
+HEAD_SELECTION_MODE = "best_add"      # "topk" | "best_add" | "reinforce" | "learn_weights"
+TARGET_HEADS        = 20          # target number of heads (not used for learn_weights)
 
 # ---- best_add stopping thresholds ----
 MAX_HEADS    = TARGET_HEADS
@@ -53,17 +53,20 @@ RF_LR                = 0.08
 RF_ENTROPY_BONUS     = 0.01
 RF_EPISODE_SUBSAMPLE = 0.5        # subsample episodes for approximate LOEO; None for full
 
+# ---- Debug and printing options ----
+PRINT_HEAD_RANKINGS  = True      # print detailed head rankings and MSE statistics
+
 
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 # Import commonly used utilities directly for readability
 from openpi.knn.utils import (
     build_dataset, build_feat_subset,
-    rank_single_heads, simple_topk_select, greedy_forward_select, reinforce_select_heads,
-    get_action_labels, HeadPreprocessor,
+    rank_single_heads, simple_topk_select, greedy_forward_select, reinforce_select_heads, learn_head_weights,
+    get_action_labels, HeadPreprocessor, load_episode_frames,
 )
 from openpi.knn.metrics import build_global_metric_ctx_for_heads
-from openpi.knn.eval import evaluate_model_on_h5, evaluate_leave_one_episode_out, predict_episode
+from openpi.knn.eval import evaluate_model_on_h5, evaluate_leave_one_episode_out, predict_episode, predict_episode_from_activation
 from openpi.knn.viz import knn_overlap_and_plots
 
 # Global metric caches for METRIC_SCOPE=="global"
@@ -117,6 +120,7 @@ class KnnRegModel:
     X_bank: np.ndarray   # (N, |S|*d)
     Y_bank: np.ndarray   # (N, A)
     metric_ctx: Optional[dict] = None
+    head_weights: Optional[np.ndarray] = None  # (H,) for learn_weights mode
 
 def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: str = HEAD_SELECTION_MODE) -> Tuple[KnnRegModel, Dict]:
     """
@@ -131,21 +135,22 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
     )
     d_per_head = preprocessed_data.Xh_red.shape[-1]
 
-    # 1) Single-head ranking
-    head_rankings = rank_single_heads(
+    # 1) Single-head ranking per k
+    rankings_per_k = rank_single_heads(
         preprocessed_data.features, preprocessed_data.actions, preprocessed_data.episode_ids, preprocessed_data.frame_ids,
                               K_GRID, DIST_METRIC, TEMP_EXCL_W,
         pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
         pre_obj=preprocessed_data, metric_scope=METRIC_SCOPE,
         use_fullspace=GLOBAL_METRIC_FULLSPACE, H=H,
-        metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
+        metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE,
+        print_rankings=PRINT_HEAD_RANKINGS
     )
 
     # 2) Select heads by mode
     if selection_mode == "topk":
         selected_heads, best_k_value, cross_val_mse, per_k_mse_scores = simple_topk_select(
             preprocessed_data.features, preprocessed_data.actions, preprocessed_data.episode_ids, preprocessed_data.frame_ids,
-            head_rankings, K_GRID, DIST_METRIC, TEMP_EXCL_W, TARGET_HEADS, 
+            rankings_per_k, K_GRID, DIST_METRIC, TEMP_EXCL_W, TARGET_HEADS, 
             pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA, pre_obj=preprocessed_data,
             metric_scope=METRIC_SCOPE, use_fullspace=GLOBAL_METRIC_FULLSPACE,
             H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
@@ -154,7 +159,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
     elif selection_mode == "best_add":
         selected_heads, best_k_value, cross_val_mse, per_k_mse_scores = greedy_forward_select(
             preprocessed_data.features, preprocessed_data.actions, preprocessed_data.episode_ids, preprocessed_data.frame_ids,
-            head_rankings, K_GRID, DIST_METRIC, TEMP_EXCL_W, TARGET_HEADS, 
+            rankings_per_k, K_GRID, DIST_METRIC, TEMP_EXCL_W, TARGET_HEADS, 
             pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA, pre_obj=preprocessed_data,
             metric_scope=METRIC_SCOPE, use_fullspace=GLOBAL_METRIC_FULLSPACE,
             H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
@@ -175,7 +180,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
                 pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
                 pls_components=PLS_COMPONENTS, use_fullspace=GLOBAL_METRIC_FULLSPACE,
                 H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
-            )
+        )
         else:
             ctx_global = None
         for k in K_GRID:
@@ -187,11 +192,28 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
                 metric_scope=METRIC_SCOPE, metric_ctx_global=ctx_global,
             )
             per_k_mse_scores[int(k)] = float(mse_k)
+    elif selection_mode == "learn_weights":
+        head_weights, best_k_value, cross_val_mse, per_k_mse_scores = learn_head_weights(
+            preprocessed_data.features, preprocessed_data.actions, preprocessed_data.episode_ids, preprocessed_data.frame_ids,
+            K_GRID, DIST_METRIC, TEMP_EXCL_W,
+            pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
+            pre_obj=preprocessed_data, metric_scope=METRIC_SCOPE,
+            use_fullspace=GLOBAL_METRIC_FULLSPACE, H=H,
+            metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE,
+            lr=0.01, iters=100, weight_decay=1e-4
+        )
+        # For weighted approach, we use all heads
+        selected_heads = list(range(H))
+        head_probabilities = head_weights  # Store learned weights
     else:
-        raise ValueError("selection_mode must be one of {'topk','best_add','reinforce'}")
+        raise ValueError("selection_mode must be one of {'topk','best_add','reinforce','learn_weights'}")
 
     # 3) Build the final feature bank (all samples)
-    feature_bank = build_feat_subset(preprocessed_data.Xh_red, selected_heads)
+    if selection_mode == "learn_weights":
+        # For weighted mode, we need to store per-head features and apply weights during inference
+        feature_bank = preprocessed_data.Xh_red.reshape(preprocessed_data.Xh_red.shape[0], -1)  # (N, H*d)
+    else:
+        feature_bank = build_feat_subset(preprocessed_data.Xh_red, selected_heads)
     
     # 4) Learn metric context for inference-time distance computation
     learned_metric_context = None
@@ -226,13 +248,14 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         preproc=preprocessed_data.preproc,
         X_bank=feature_bank.astype(np.float32),
         Y_bank=preprocessed_data.Y.astype(np.float32),
+        head_weights=head_weights if selection_mode == "learn_weights" else None,
     )
     trained_model.metric_ctx = learned_metric_context
     training_info = {
         "selection_mode": selection_mode,
         "cv_mse": cross_val_mse,
         "per_k_mse": per_k_mse_scores,
-        "head_rankings": head_rankings,        # [(mse,k,h)]
+        "rankings_per_k": rankings_per_k,        # {k: [(mse, head_id), ...]}
         "head_probabilities": head_probabilities,      # for reinforce
         "episodes": preprocessed_data.episodes,
         "d_per_head": d_per_head,
@@ -285,35 +308,41 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
 
 if __name__ == "__main__":
     ATTN_H5 = "pick_train_attention_last_token_keyframe_new_positive.h5"
-    #ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
+    ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
 
 
-    # with h5py.File(ATTN_H5_EVAL, "r") as f:
-    #     eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
+    with h5py.File(ATTN_H5_EVAL, "r") as f:
+        eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
 
     model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
-
+    # print("Learned weights:", model.head_weights)
+    # print("Head probabilities:", info["head_probabilities"])
     # Evaluate on a separate test set (optional)
-    # evaluation_results = evaluate_model_on_h5(ATTN_H5_EVAL, eval_eps, model, ks=K_GRID)
-    # print("evaluation results:", evaluation_results["per_k_mse"], evaluation_results["overall_mse"])
-
+    evaluation_results = evaluate_model_on_h5(ATTN_H5_EVAL, eval_eps, model, ks=K_GRID)
+    print("evaluation results:", evaluation_results["per_k_mse"], evaluation_results["overall_mse"])
 
     # Inference: predict actions (via KNN) frame-by-frame for an episode
     test_ep = all_eps[0]
     pred_actions = predict_episode(ATTN_H5, test_ep, model)
     print("Pred shape:", pred_actions.shape)
 
+    # Inference: predict actions (via KNN) given activations
+    attn_frame = np.random.rand(18, 8, 256)
+    print("Attn frame shape:", attn_frame.shape)
+    action = predict_episode_from_activation(attn_frame, model)
+    print("Pred shape:", action.shape)
+
     # Example: Visualize neighbors for the trained model (optional)
     # diag = knn_overlap_and_plots(
-    #     attn_h5=ATTN_H5,
-    #     episodes=all_eps,
+    #     attn_h5=ATTN_H5_EVAL,
+    #     episodes=eval_eps,
     #     model=model,
     #     ks=K_GRID,
     #     feature_metric=model.metric,
     #     action_metric="mse",
-    #     output_dir="knn_viz_debug",
+    #     output_dir="knn_viz_debug_proj",
     #     max_points_for_scatter=400,
     #     use_tsne=False,
     #     temp_excl_window=TEMP_EXCL_W,

@@ -38,7 +38,50 @@ def pairwise_dist(q: np.ndarray, base: np.ndarray, metric: str, metric_ctx: dict
         raise ValueError("metric must be 'cosine' or 'euclidean' or 'whiten' or 'proj' or 'pls'")
 
 
-__all__ = ["pairwise_dist"]
+def pairwise_dist_matrix(Q: np.ndarray, B: np.ndarray, metric: str, metric_ctx: dict | None = None) -> np.ndarray:
+    """
+    Compute pairwise distances between rows of Q (Bq,P) and B (Nb,P): returns (Bq, Nb).
+    Applies learned metric transforms (whiten/proj/pls) in a single pass.
+    """
+    if metric == "cosine":
+        Qn = Q / (np.linalg.norm(Q, axis=1, keepdims=True) + 1e-8)
+        Bn = B / (np.linalg.norm(B, axis=1, keepdims=True) + 1e-8)
+        # cosine distance = 1 - cos_sim = 1 - Qn @ Bn^T
+        return 1.0 - (Qn @ Bn.T)
+    elif metric == "euclidean":
+        # ||Q-B|| = sqrt(||Q||^2 + ||B||^2 - 2 Q B^T)
+        Q2 = np.sum(Q*Q, axis=1, keepdims=True)         # (Bq,1)
+        B2 = np.sum(B*B, axis=1, keepdims=True).T       # (1,Nb)
+        cross = Q @ B.T                                  # (Bq,Nb)
+        D2 = np.maximum(Q2 + B2 - 2.0*cross, 0.0)
+        return np.sqrt(D2)
+    elif metric == "whiten":
+        assert metric_ctx is not None and "Wg" in metric_ctx and "mu" in metric_ctx
+        Wg = metric_ctx["Wg"]; mu = metric_ctx["mu"]
+        Q2 = (Q - mu[None, :]) @ Wg
+        B2 = (B - mu[None, :]) @ Wg
+        Q2_2 = np.sum(Q2*Q2, axis=1, keepdims=True)
+        B2_2 = np.sum(B2*B2, axis=1, keepdims=True).T
+        cross = Q2 @ B2.T
+        D2 = np.maximum(Q2_2 + B2_2 - 2.0*cross, 0.0)
+        return np.sqrt(D2)
+    elif metric == "proj" or metric == "pls":
+        assert metric_ctx is not None and "W" in metric_ctx
+        W = metric_ctx["W"]
+        if W.ndim == 2 and W.shape[0] != Q.shape[1] and W.shape[1] == Q.shape[1]:
+            W = W.T
+        Q2 = Q @ W
+        B2 = B @ W
+        Q2_2 = np.sum(Q2*Q2, axis=1, keepdims=True)
+        B2_2 = np.sum(B2*B2, axis=1, keepdims=True).T
+        cross = Q2 @ B2.T
+        D2 = np.maximum(Q2_2 + B2_2 - 2.0*cross, 0.0)
+        return np.sqrt(D2)
+    else:
+        raise ValueError("metric must be 'cosine' or 'euclidean' or 'whiten' or 'proj' or 'pls'")
+
+
+__all__ = ["pairwise_dist", "pairwise_dist_matrix"]
 
 
 def build_metric_ctx_from_train(

@@ -11,25 +11,26 @@ import random
 import h5py  # type: ignore
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_train_attention_last_token_positive.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
 MAX_EPISODES = 400
-USE_KEYFRAME = True
+USE_KEYFRAME = False
 # from tasks import Pick_training_tasks
 from openpi.llm_instruction_verb_filter import instruction_matches_prompt
 LLM_PROMPT_KEY = "pick_place"
 # 若只想在已生成的注意力文件上追加动作标签而不重算激活，请置 True
-APPEND_ACTION_LABELS_ONLY = False
+APPEND_ACTION_LABELS_ONLY = True
 # 1) 取模型定义 & 权重 ----------------------------------------------------------
 from openpi.training import config
 from openpi.policies import policy_config
 from openpi.shared import download
 
-config = config.get_config("pi0_fast_droid")
-checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_fast_droid")
+if not APPEND_ACTION_LABELS_ONLY:
+    config = config.get_config("pi0_fast_droid")
+    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_fast_droid")
 
-# Create a trained policy.
-policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0FAST Module 实例（没有权重）
+    # Create a trained policy.
+    policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0FAST Module 实例（没有权重）
 
 # 2) 构造 Observation（带 batch 维）-------------------------------------------
 from openpi.models.model import Observation
@@ -98,8 +99,8 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
     with h5py.File(h5_path, "r") as f:
         for task_name in f:  # 第一层：任务
-            if not instruction_matches_prompt(task_name, prompt_key=LLM_PROMPT_KEY):
-                continue
+            # if not instruction_matches_prompt(task_name, prompt_key=LLM_PROMPT_KEY):
+            #     continue
             print("task_name:",task_name)
             grp = f[task_name]  # type: ignore[index]
 
@@ -123,6 +124,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                     f"{ep_prefix}_view_0",
                     f"{ep_prefix}_view_2",
                     f"{ep_prefix}_act_joint_pos",
+                    f"{ep_prefix}_act_joint_vel",
                     f"{ep_prefix}_act_gripper_pos",
                 ]
 
@@ -135,6 +137,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                 img_primary   = grp[f"{ep_prefix}_view_0"][:]  # type: ignore[index]
                 img_wrist     = grp[f"{ep_prefix}_view_2"][:]  # type: ignore[index]
                 act_joint_pos = grp[f"{ep_prefix}_act_joint_pos"][:]  # type: ignore[index]
+                act_joint_vel = grp[f"{ep_prefix}_act_joint_vel"][:]  # type: ignore[index]
                 act_gripper_pos = grp[f"{ep_prefix}_act_gripper_pos"][:]  # type: ignore[index]
                 obs_list: list[dict] = []
                 act_list: list[np.ndarray] = []
@@ -151,6 +154,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
                     act_list.append(actions_arr[frame_idx])  # type: ignore[arg-type]
                     action_dict_list.append({
                         "act_joint_pos": act_joint_pos[frame_idx],
+                        "act_joint_vel": act_joint_vel[frame_idx],
                         "act_gripper_pos": act_gripper_pos[frame_idx],
                     })
 
@@ -173,7 +177,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
     return data
 
 # 用法
-h5_path = "/scr2/yusenluo/openpi/droid_pick_eval_positive_400_with_action.h5" #"/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5"
+h5_path = "/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_pick_eval_positive_400_with_action.h5" #"/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5" #"/scr2/yusenluo/openpi/droid_LLM_pick_eval_negative.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # 遍历并推理，同时打印当前进度：
@@ -217,17 +221,16 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # 在退出时自动 flush &
                         data=action_arr,
                         compression="gzip",
                     )
-                    # 写入 7+1 维的 pi_droid_action（关节7维 + 抓手1维）
-                    act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
-                    act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
-                    pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
+                    # 删除旧的 pi_droid_action（若存在）并写入独立字段
                     if "pi_droid_action" in grp:
                         del grp["pi_droid_action"]
-                    grp.create_dataset(
-                        "pi_droid_action",
-                        data=pi_droid_action,
-                        compression="gzip",
-                    )
+                    jp = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
+                    jv = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_vel"], dtype=np.float32).reshape(-1)
+                    gp = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
+                    for key, arr in (("joint_position", jp), ("joint_velocity", jv), ("gripper_position", gp)):
+                        if key in grp:
+                            del grp[key]
+                        grp.create_dataset(key, data=arr, compression="gzip")
                     continue
 
                 outputs, attention_outputs = policy.infer(obs, return_attention_heads=True, return_attention_probs=True)
@@ -278,27 +281,22 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # 在退出时自动 flush &
                 grp.attrs["full_llm_shape"] = full_attn.shape
                 grp.attrs["last_token_idx"] = int(attention_outputs["last_token_idx"])  # type: ignore[arg-type]
 
-                # 同时写入动作标签（7维）与拼接后的 pi_droid_action（8维）
+                # 写入动作标签，并改为独立的关节/夹爪字段（不再保存 pi_droid_action）
                 action_arr = np.asarray(act, dtype=np.float32)
                 if "action_label" in grp:
                     del grp["action_label"]
-                grp.create_dataset(
-                    "action_label",
-                    data=action_arr,
-                    compression="gzip",
-                )
+                grp.create_dataset("action_label", data=action_arr, compression="gzip")
 
-                act_joint = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
-                act_grip  = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
-                pi_droid_action = np.concatenate([act_joint, act_grip], axis=0)
-                assert pi_droid_action.shape == (8,)
                 if "pi_droid_action" in grp:
                     del grp["pi_droid_action"]
-                grp.create_dataset(
-                    "pi_droid_action",
-                    data=pi_droid_action,
-                    compression="gzip",
-                )
+
+                jp = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_pos"], dtype=np.float32).reshape(-1)
+                jv = np.asarray(ep_data["action_dict_list"][frame_idx]["act_joint_vel"], dtype=np.float32).reshape(-1)
+                gp = np.asarray(ep_data["action_dict_list"][frame_idx]["act_gripper_pos"], dtype=np.float32).reshape(-1)
+                for key, arr in (("joint_position", jp), ("joint_velocity", jv), ("gripper_position", gp)):
+                    if key in grp:
+                        del grp[key]
+                    grp.create_dataset(key, data=arr, compression="gzip")
 
             # —— 一个 episode 写完 ——
             ep_counter += 1

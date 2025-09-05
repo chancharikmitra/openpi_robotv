@@ -514,12 +514,12 @@ class Module(nn.Module):
         if return_attention_heads:
             # print("all_attention_heads.shape:", all_attention_heads[0].shape)
             out["attention_heads"] = jnp.stack(all_attention_heads, axis=0)  # Per-layer attention head activations (not probabilities). Shape: [n_layers, batch, seq_len, n_heads, head_dim]
-            print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
+            # print("out['attention_heads'].shape:", out["attention_heads"].shape) #out['attention_heads'].shape: (1, 18, 1, 1018, 8, 256)
         if return_attention_probs:
             # Note: Returns attention probabilities for each layer at the current query position (last token),
             # with heads flattened. Shape: [n_layers, batch, n_heads, S]
             out["attention_probs"] = jnp.stack(all_attention_probs, axis=0)
-            print("out['attention_probs'].shape:", out["attention_probs"].shape)
+            # print("out['attention_probs'].shape:", out["attention_probs"].shape)
 
         if return_prelogits:
             return x, kv_cache, out
