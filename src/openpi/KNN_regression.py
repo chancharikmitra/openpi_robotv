@@ -307,7 +307,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "/home/yusenluo/pick_train_attention_last_token_positive_on_robot.h5"
+    ATTN_H5 = "/scr2/yusenluo/openpi_robotv/attention_dataset/pick_red_cube_20.h5"
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]

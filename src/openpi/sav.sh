@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=SAV       # Job name
-#SBATCH --output=/scr2/yusenluo/openpi_robotv/src/openpi/slurm_output/SAV_train_20.txt   # Output file
+#SBATCH --output=/scr2/yusenluo/openpi_robotv/src/openpi/slurm_output/SAV_train_wipe1.txt   # Output file
 #SBATCH --ntasks=1                      # Number of tasks (processes)
 #SBATCH --gres=gpu:1               # Number of GPUs                
 #SBATCH --cpus-per-task=16               # Number of CPU cores per task
@@ -12,7 +12,7 @@ source /scr/yusenluo/anaconda3/etc/profile.d/conda.sh
 conda activate openpi
 
 
-CUDA_VISIBLE_DEVICES=4 python /home/yusenluo/openpi_robotv/src/openpi/generate_activation_dataset_on_robot.py
+python /scr2/yusenluo/openpi_robotv/src/openpi/generate_activation_dataset_on_robot.py
 
 #python SAV.py
 #python attention_visualize.py
