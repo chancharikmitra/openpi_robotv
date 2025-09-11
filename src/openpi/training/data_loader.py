@@ -364,8 +364,20 @@ def create_rlds_data_loader(
             number of batches in the dataset, the data loader will loop over the dataset.
             If not provided, will iterate over the dataset indefinitely.
     """
+    # IMPORTANT: For H5 data, route to Torch (map-style) path to avoid TF-style iterable expectations.
     if data_config.h5_path is not None:
-        dataset = create_h5_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
+        return create_torch_data_loader(
+            data_config,
+            model_config=_model.Pi0Config() if False else _model.BaseModelConfig,  # placeholder, will be ignored
+            action_horizon=action_horizon,
+            batch_size=batch_size,
+            sharding=sharding,
+            skip_norm_stats=skip_norm_stats,
+            shuffle=shuffle,
+            num_batches=num_batches,
+            num_workers=0,
+            seed=0,
+        )
     elif data_config.rlds_data_dir is not None:
         dataset = create_rlds_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
     dataset = transform_iterable_dataset(dataset, data_config, skip_norm_stats=skip_norm_stats, is_batched=True)
