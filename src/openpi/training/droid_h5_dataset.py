@@ -283,11 +283,11 @@ class DroidH5Dataset:
 if __name__ == "__main__":
     # Example 1: use fixed instruction
     loader = DroidH5Dataset(
-        h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick_red_cube_20.h5",
+        h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick-up-red-mug-20.h5",
         batch_size=32,
         action_space=DroidActionSpace.JOINT_VELOCITY,
         shuffle=True,
-        fixed_instruction="pick red cube",
+        fixed_instruction="pick up red mug",
     )
     for batch in loader:
         print(batch["actions"].shape)   # (32,16,8)

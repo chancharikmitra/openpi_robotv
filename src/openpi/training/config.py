@@ -776,19 +776,19 @@ _CONFIGS = [
         data=H5DroidDataConfig(
             repo_id="on_robot",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            h5_path="/home/yusenluo/robotv_dataset/pick_red_cube_20.h5",
+            h5_path="/home/yusenluo/robotv_dataset/pick-up-red-mug-20.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
-            fixed_instruction="pick red cube",  # 固定instruction
+            fixed_instruction="pick up red mug",  # fixed instruction
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter_with_frozen_img_encoder(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=200,          
-            peak_lr=3e-4,              
-            decay_steps=3000,         
-            decay_lr=3e-5,             
+        lr_schedule =_optimizer.CosineDecaySchedule(
+            warmup_steps=300,
+            peak_lr=2.5e-5,      
+            decay_steps=3000,  
+            decay_lr=2.5e-6,  
         ),
 
         num_train_steps=5000,         
@@ -840,9 +840,9 @@ _CONFIGS = [
         ),
         data=H5DroidDataConfig(
             repo_id="on_robot",
-            h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick_red_cube_20.h5",
+            h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick-up-red-mug-20.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
-            fixed_instruction="pick red cube",
+            fixed_instruction="pick up red mug",
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
             # trainable_head_indices=[
@@ -853,9 +853,9 @@ _CONFIGS = [
             #     (0, 3), (17, 5), (17, 7), (17, 2), (17, 6), (0, 6), (17, 4), (17, 1), 
             #     (17, 0), (16, 7), (17, 3), (0, 0), (16, 4), (16, 6), (16, 2), (16, 3), (16, 0), (0, 4), (16, 5), (16, 1)] # SAV worst heads
             trainable_head_indices = [
-                (7, 2), (13, 7), (10, 6), (12, 1), (12, 6), (14, 6), (13, 1), (15, 2), (14, 7), (7, 7),
-                (11, 4), (12, 5), (11, 5), (10, 5), (9, 7), (8, 3), (12, 4), (14, 3), (13, 5), (11, 7)
-            ] # KNN cosine K=40: [58, 111, 86, 97, 102, 118, 105, 122, 119, 63, 92, 101, 93, 85, 79, 67, 100, 115, 109, 95]
+                (6, 7), (4, 0), (8, 2), (5, 5), (13, 7), (4, 4), (14, 3), (14, 4), (5, 1), (16, 5),
+                (8, 7), (4, 2), (3, 0), (16, 1), (13, 6), (6, 6), (12, 7), (14, 1), (16, 0), (5, 6)
+            ] # KNN cosine K=30: [55, 32, 66, 45, 111, 36, 115, 116, 41, 133, 71, 34, 24, 129, 110, 54, 103, 113, 128, 46]
             # trainable_head_indices = [
             #     (8, 0), (6, 1), (14, 4), (1, 5), (1, 1), (4, 7), (14, 1), (10, 7), (7, 2), (10, 2),
             #     (6, 6), (0, 4), (1, 2), (7, 3), (13, 5), (4, 5), (9, 5), (4, 6), (3, 4), (5, 5)
@@ -869,9 +869,9 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
-            peak_lr=1.0e-4,      
+            peak_lr=2.5e-5,      
             decay_steps=3000,  
-            decay_lr=1.0e-5,  
+            decay_lr=2.5e-6,  
         ),
         num_train_steps=5000,
         save_interval=500,
