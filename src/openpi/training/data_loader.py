@@ -183,6 +183,7 @@ def create_h5_dataset(
         shuffle=shuffle,
         action_chunk_size=action_horizon,
         action_space=data_config.action_space,
+        fixed_instruction=data_config.fixed_instruction,
     )
 
 

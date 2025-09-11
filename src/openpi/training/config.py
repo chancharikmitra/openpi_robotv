@@ -96,6 +96,8 @@ class DataConfig:
     rlds_data_dir: str | None = None
     # Action space for DROID dataset.
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
+    # Fixed instruction for H5 dataset.
+    fixed_instruction: str | None = None
 
 
 class GroupFactory(Protocol):
@@ -400,6 +402,7 @@ class H5DroidDataConfig(DataConfigFactory):
     """
     h5_path: str | None = None
     action_space: droid_h5_dataset.DroidActionSpace = droid_h5_dataset.DroidActionSpace.JOINT_POSITION
+    fixed_instruction: str | None = None  # 新增：固定instruction
     
 
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
@@ -445,6 +448,7 @@ class H5DroidDataConfig(DataConfigFactory):
             use_quantile_norm=model_config.model_type == ModelType.PI0_FAST,
             h5_path=self.h5_path,
             action_space=self.action_space,
+            fixed_instruction=self.fixed_instruction,  # 传递fixed_instruction
         )
 
 
@@ -772,8 +776,9 @@ _CONFIGS = [
         data=H5DroidDataConfig(
             repo_id="on_robot",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            h5_path="/home/yusenluo/pick-red-cube_250827_20_only.h5",
+            h5_path="/home/yusenluo/robotv_dataset/pick_red_cube_20.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
+            fixed_instruction="pick red cube",  # 固定instruction
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"

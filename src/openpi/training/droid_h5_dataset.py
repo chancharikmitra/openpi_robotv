@@ -7,7 +7,7 @@ class DroidActionSpace(Enum):
     JOINT_VELOCITY = auto()
 
 # ---------------- episode generator ----------------
-def _episode_generator(h5_path):
+def _episode_generator(h5_path, fixed_instruction=None):
     """
     适配 pick-red-cube_250827.h5 的结构：
     - 顶层：每个轨迹为一个组，名称中包含 success/…
@@ -116,7 +116,11 @@ def _episode_generator(h5_path):
                 base = re.sub(r"\s+", " ", base).strip()
                 return base
 
-            instruction_text = extract_instruction_from_group(episode_name, episode_group)
+            # 如果指定了固定instruction，则使用固定值；否则从文件中提取
+            if fixed_instruction is not None:
+                instruction_text = fixed_instruction
+            else:
+                instruction_text = extract_instruction_from_group(episode_name, episode_group)
             instruction_bytes = np.array([instruction_text.encode("utf-8")] * T)
             file_path_bytes = np.array([episode_name.encode()] * T)
 
@@ -155,6 +159,7 @@ class DroidH5Dataset:
         action_space : DroidActionSpace=DroidActionSpace.JOINT_VELOCITY,
         shuffle_buffer_size : int = 256,
         num_parallel_calls  : int = tf.data.AUTOTUNE,
+        fixed_instruction : str = None,  # 新增参数：固定instruction
     ):
         tf.config.set_visible_devices([], "GPU")
 
@@ -180,7 +185,7 @@ class DroidH5Dataset:
             },
         }
         dataset = tf.data.Dataset.from_generator(
-            lambda: _episode_generator(h5_path),
+            lambda: _episode_generator(h5_path, fixed_instruction),
             output_signature=output_sig,
         )
 
@@ -265,12 +270,22 @@ class DroidH5Dataset:
         return 10000
 
 if __name__ == "__main__":
+    # 示例1：使用固定instruction
     loader = DroidH5Dataset(
-        h5_path="/home/yusenluo/pick_red_cube_20.h5",
+        h5_path="/home/yusenluo/robotv_dataset/pick_red_cube_20.h5",
         batch_size=32,
         action_space=DroidActionSpace.JOINT_VELOCITY,
         shuffle=True,
+        #fixed_instruction="pick red cube",  # 固定instruction
     )
+    
+    # 示例2：不使用固定instruction（从文件中提取）
+    # loader = DroidH5Dataset(
+    #     h5_path="/home/yusenluo/pick_red_cube_20.h5",
+    #     batch_size=32,
+    #     action_space=DroidActionSpace.JOINT_VELOCITY,
+    #     shuffle=True,
+    # )
     for batch in loader:
         print(batch["actions"].shape)   # (32,16,8)
         print(batch["observation"]["image"].shape)   # (32,256,256,3)
