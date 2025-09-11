@@ -16,6 +16,7 @@ import openpi.training.config as _config
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
 from openpi.training.droid_h5_dataset import DroidH5Dataset
+from openpi.training.droid_h5_torch_dataset import TorchDroidH5Dataset, DroidActionSpace as TorchH5ActionSpace
 
 T_co = TypeVar("T_co", covariant=True)
 
@@ -176,13 +177,17 @@ def create_h5_dataset(
     *,
     shuffle: bool = False,
 ) -> Dataset:
-    # At the moment, we only support DROID for RLDS datasets.
-    return DroidH5Dataset(
+    # Torch map-style dataset for H5
+    # Note: We return a map-style dataset so the caller should use the TorchDataLoader path.
+    # This function keeps the signature but no longer uses TF pipeline.
+    return TorchDroidH5Dataset(
         h5_path=data_config.h5_path,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        action_chunk_size=action_horizon,
-        action_space=data_config.action_space,
+        action_horizon=action_horizon,
+        action_space=(
+            TorchH5ActionSpace.JOINT_POSITION
+            if data_config.action_space == _config.droid_rlds_dataset.DroidActionSpace.JOINT_POSITION  # type: ignore[attr-defined]
+            else TorchH5ActionSpace.JOINT_VELOCITY
+        ),
         fixed_instruction=data_config.fixed_instruction,
     )
 
@@ -249,7 +254,7 @@ def create_data_loader(
     """Create a data loader for training."""
     data_config = config.data.create(config.assets_dirs, config.model)
 
-    if data_config.rlds_data_dir is not None or data_config.h5_path is not None:
+    if data_config.rlds_data_dir is not None:
         return create_rlds_data_loader(
             data_config,
             action_horizon=config.model.action_horizon,
@@ -258,6 +263,20 @@ def create_data_loader(
             shuffle=shuffle,
             num_batches=num_batches,
             skip_norm_stats=skip_norm_stats,
+        )
+    if data_config.h5_path is not None:
+        # Route H5 to torch loader (map-style)
+        return create_torch_data_loader(
+            data_config,
+            model_config=config.model,
+            action_horizon=config.model.action_horizon,
+            batch_size=config.batch_size,
+            sharding=sharding,
+            skip_norm_stats=skip_norm_stats,
+            shuffle=shuffle,
+            num_batches=num_batches,
+            num_workers=config.num_workers,
+            seed=config.seed,
         )
     return create_torch_data_loader(
         data_config,

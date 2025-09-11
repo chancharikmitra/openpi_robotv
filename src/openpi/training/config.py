@@ -776,7 +776,7 @@ _CONFIGS = [
         data=H5DroidDataConfig(
             repo_id="on_robot",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            h5_path="/home/yusenluo/robotv_dataset/pick-up-red-mug-20.h5",
+            h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick-up-red-mug-20.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
             fixed_instruction="pick up red mug",  # fixed instruction
         ),
