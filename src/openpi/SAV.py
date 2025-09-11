@@ -197,7 +197,7 @@ def sample_episode_keys_from_h5s(
     k_pos: int = 20,
     k_neg: int = 20,
     seed: int = 42,
-) -> Tuple[List[str], List[str]]:
+) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
     """随机从多个 H5 中抽取正/负 episode。
 
     - 在每个集合内（正/负）先合并所有 H5 的 episode，再整体随机抽取 k 个。
@@ -205,13 +205,15 @@ def sample_episode_keys_from_h5s(
     """
     random.seed(seed)
 
-    pos_all: List[str] = []
+    pos_all: List[Tuple[str, str]] = []  # (h5_path, "task/episode_xxx")
     for p in pos_h5_paths:
-        pos_all.extend(_list_all_episode_keys(p))
+        for ep in _list_all_episode_keys(p):
+            pos_all.append((p, ep))
 
-    neg_all: List[str] = []
+    neg_all: List[Tuple[str, str]] = []
     for n in neg_h5_paths:
-        neg_all.extend(_list_all_episode_keys(n))
+        for ep in _list_all_episode_keys(n):
+            neg_all.append((n, ep))
 
     if len(pos_all) < k_pos:
         raise ValueError(f"正类可用 episodes 数量不足：{len(pos_all)} < {k_pos}")
@@ -221,6 +223,69 @@ def sample_episode_keys_from_h5s(
     pos_sample = random.sample(pos_all, k_pos)
     neg_sample = random.sample(neg_all, k_neg)
     return pos_sample, neg_sample
+
+
+# ------------------------------------------------------------
+# 2b.  run_sav on multi-H5 sampled episodes (new)
+# ------------------------------------------------------------
+def run_sav_multi(
+    pos_eps: List[Tuple[str, str]],
+    neg_eps: List[Tuple[str, str]],
+    k: int = 20,
+    agg: str = "mean",
+    sel_metric: str = "accuracy",
+):
+    """与 run_sav 等价，但支持 (h5_path, ep_key) 形式的 episode 列表。"""
+    # 将 episodes 按 h5 路径分组，避免频繁开关文件
+    def _group(eps: List[Tuple[str, str]]):
+        by_file: Dict[str, List[str]] = {}
+        for p, e in eps:
+            by_file.setdefault(p, []).append(e)
+        return by_file
+
+    pos_by_file = _group(pos_eps)
+    neg_by_file = _group(neg_eps)
+
+    feats_pos: List[np.ndarray] = []
+    for h5_path, eps in pos_by_file.items():
+        with h5py.File(h5_path, "r") as f:
+            for e in tqdm(eps):
+                feats_pos.append(episode_to_vec(load_episode(f, e), agg))
+
+    feats_neg: List[np.ndarray] = []
+    for h5_path, eps in neg_by_file.items():
+        with h5py.File(h5_path, "r") as f:
+            for e in tqdm(eps):
+                feats_neg.append(episode_to_vec(load_episode(f, e), agg))
+
+    feats   = np.concatenate([np.stack(feats_pos), np.stack(feats_neg)], axis=0)
+    labels  = np.array([1]*len(feats_pos) + [0]*len(feats_neg))
+    pos_c, neg_c = build_centroids(feats, labels)
+
+    if sel_metric == "accuracy":
+        score = head_accuracy(feats, labels, pos_c, neg_c)
+    elif sel_metric in {"diff", "margin", "cos_diff"}:
+        score = head_similarity_margin(feats, labels, pos_c, neg_c)
+    else:
+        raise ValueError("sel_metric must be 'accuracy' or 'diff'")
+
+    heads = select_top_heads(score, k)
+    n_full = n_90 = 0
+    if sel_metric == "accuracy":
+        n_full = np.sum(score == 1.0)
+        n_90   = np.sum(score >= 0.9)
+        total_heads = score.size
+        print(f"✅ Heads @100% accuracy  : {n_full}/{total_heads}")
+        print(f"⭐ Heads ≥90% accuracy   : {n_90}/{total_heads}")
+
+    return dict(
+        pos_cent=pos_c,
+        neg_cent=neg_c,
+        sel_heads=heads,
+        head_acc=score,
+        agg=agg,
+        n_full=int(n_full),
+    )
 
 # ------------------------------------------------------------
 # 1.  load a single episode → (F, 18, 8, 256)                ★
@@ -517,7 +582,8 @@ random.seed(42)
 support_pos = random.sample(all_pos, 20)
 support_neg = random.sample(all_neg, 20)    
 
-sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
+#sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
+sav_model = run_sav_multi(all_pos, all_neg, k=20, agg="mean", sel_metric="margin")
 
 pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 
@@ -531,17 +597,17 @@ pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 #     zero_fill=True,
 # )
 
-EVAL_H5 = "pick_eval_attention_last_token_single_action_keyframe.h5"    
-all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS)
-print(len(all_pos_eval), len(all_neg_eval)) 
-# print(all_pos_eval)
-# print(all_neg_eval)
-pos_eval = random.sample(all_pos_eval, 200)
-neg_eval = random.sample(all_neg_eval, 200)
-eval_eps    = pos_eval + neg_eval          # or a balanced sample
-eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
-# plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
-evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
+# EVAL_H5 = "pick_eval_attention_last_token_single_action_keyframe.h5"    
+# all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS)
+# print(len(all_pos_eval), len(all_neg_eval)) 
+# # print(all_pos_eval)
+# # print(all_neg_eval)
+# pos_eval = random.sample(all_pos_eval, 200)
+# neg_eval = random.sample(all_neg_eval, 200)
+# eval_eps    = pos_eval + neg_eval          # or a balanced sample
+# eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
+# # plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
+# evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
 # ks, accs = evaluate_curve(EVAL_H5, eval_eps, eval_labels, sav_model,
 #                           max_k=32, step=4, plot_file="topk_curve.png")
 
