@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- 保存配置 ----------------------------------
 # 如果希望输出到不同路径，可修改此处
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/attention_dataset/wipe_table_with_cloth_20.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/attention_dataset/place_marker_in_mug_20.h5" #"wipe_eval_attention_last_token_single_action_negative.h5"
 # 最多处理多少个 episode（跨所有 task 总计）
 MAX_EPISODES = 20
 USE_KEYFRAME = False
@@ -165,7 +165,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt 作为 task_name 分组键；若设置了环境变量 FORCED_PROMPT，则统一覆盖
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "wipe table with cloth"
+            prompt_text = "place marker in mug"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -263,7 +263,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # 用法
-h5_path = "/scr2/yusenluo/openpi_robotv/robotv_dataset/wipe_table_with_cloth_20.h5"
+h5_path = "/scr2/yusenluo/openpi_robotv/robotv_dataset/place_marker_in_mug_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # 遍历并推理，同时打印当前进度：

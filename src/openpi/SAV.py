@@ -175,6 +175,53 @@ def collect_episode_keys(
                         neg_keys.append(key)
     return pos_keys, neg_keys
 
+
+# ------------------------------------------------------------
+# 0b.  sample episodes from multiple H5 files (new)
+# ------------------------------------------------------------
+def _list_all_episode_keys(h5_path: str) -> List[str]:
+    eps: List[str] = []
+    with h5py.File(h5_path, "r") as h5:
+        for task in h5.keys():
+            grp = h5[task]
+            if not isinstance(grp, h5py.Group):
+                continue
+            for ep in grp.keys():
+                eps.append(f"{task}/{ep}")  # task/episode_xxx
+    return eps
+
+
+def sample_episode_keys_from_h5s(
+    pos_h5_paths: List[str],
+    neg_h5_paths: List[str],
+    k_pos: int = 20,
+    k_neg: int = 20,
+    seed: int = 42,
+) -> Tuple[List[str], List[str]]:
+    """随机从多个 H5 中抽取正/负 episode。
+
+    - 在每个集合内（正/负）先合并所有 H5 的 episode，再整体随机抽取 k 个。
+    - 返回的键格式为 "task/episode_xxx"，与本文件其它函数兼容。
+    """
+    random.seed(seed)
+
+    pos_all: List[str] = []
+    for p in pos_h5_paths:
+        pos_all.extend(_list_all_episode_keys(p))
+
+    neg_all: List[str] = []
+    for n in neg_h5_paths:
+        neg_all.extend(_list_all_episode_keys(n))
+
+    if len(pos_all) < k_pos:
+        raise ValueError(f"正类可用 episodes 数量不足：{len(pos_all)} < {k_pos}")
+    if len(neg_all) < k_neg:
+        raise ValueError(f"负类可用 episodes 数量不足：{len(neg_all)} < {k_neg}")
+
+    pos_sample = random.sample(pos_all, k_pos)
+    neg_sample = random.sample(neg_all, k_neg)
+    return pos_sample, neg_sample
+
 # ------------------------------------------------------------
 # 1.  load a single episode → (F, 18, 8, 256)                ★
 # ------------------------------------------------------------
@@ -453,7 +500,18 @@ def save_selected_head_activations(
 # 7.  Example run: Pick vs Non-Pick
 # ------------------------------------------------------------
 # 7.1  Sample support set
-all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
+# all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
+all_pos, all_neg = sample_episode_keys_from_h5s(
+    pos_h5_paths=[
+        "/scr2/yusenluo/openpi_robotv/attention_dataset/pick_red_cube_20.h5",
+        "/scr2/yusenluo/openpi_robotv/attention_dataset/pick_up_red_mug_20.h5",
+    ],
+    neg_h5_paths=[
+        "/scr2/yusenluo/openpi_robotv/attention_dataset/wipe_table_with_cloth_20.h5",
+        "/scr2/yusenluo/openpi_robotv/attention_dataset/remove_marker_from_mug_20.h5",
+    ],
+    k_pos=20, k_neg=20, seed=42,
+)
 print(len(all_pos), len(all_neg))
 random.seed(42)
 support_pos = random.sample(all_pos, 20)

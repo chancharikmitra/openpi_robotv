@@ -195,10 +195,10 @@ class DroidH5Dataset:
             dataset = dataset.shuffle(buffer_size=20)
 
         # Filter successful trajectories
-        dataset = dataset.filter(
-            lambda traj: tf.strings.regex_full_match(
-                traj["traj_metadata"]["episode_metadata"]["file_path"][0], ".*success.*")
-        )
+        # dataset = dataset.filter(
+        #     lambda traj: tf.strings.regex_full_match(
+        #         traj["traj_metadata"]["episode_metadata"]["file_path"][0], ".*success.*")
+        # )
 
         dataset = dataset.repeat()                         # Repeat dataset indefinitely
 
@@ -272,11 +272,11 @@ class DroidH5Dataset:
 if __name__ == "__main__":
     # 示例1：使用固定instruction
     loader = DroidH5Dataset(
-        h5_path="/home/yusenluo/robotv_dataset/pick_red_cube_20.h5",
+        h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick_red_cube_20.h5",
         batch_size=32,
         action_space=DroidActionSpace.JOINT_VELOCITY,
         shuffle=True,
-        #fixed_instruction="pick red cube",  # 固定instruction
+        fixed_instruction="pick red cube",  # 固定instruction
     )
     
     # 示例2：不使用固定instruction（从文件中提取）
