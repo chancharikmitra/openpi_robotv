@@ -1,4 +1,5 @@
 import h5py, tensorflow as tf, numpy as np
+import re
 from enum import Enum, auto
 
 class DroidActionSpace(Enum):
@@ -7,38 +8,140 @@ class DroidActionSpace(Enum):
 
 # ---------------- episode generator ----------------
 def _episode_generator(h5_path):
-    name_map = {"view_0":"exterior_image_1_left",
-                "view_1":"exterior_image_2_left",
-                "view_2":"wrist_image_left"}
+    """
+    适配 pick-red-cube_250827.h5 的结构：
+    - 顶层：每个轨迹为一个组，名称中包含 success/…
+    - 轨迹组内：按时间步的子组（如 "0", "1", ...）
+      每个子组包含：
+        - "obs": (8,) float64  -> 前7位为 joint_position，最后1位为 gripper_position
+        - "action": (8,) float64 -> 同理，前7位 + 最后1位
+        - "rgb_left", "rgb_right", "rgb_wrist": (256,256,3) uint8
+    - prompt 从文件中读取（优先顺序：组属性 -> 组内字符串数据集 -> 组名推断）
+    """
     with h5py.File(h5_path, "r") as f:
-        for instr in f:
-            grp = f[instr]
-            ep_ids = sorted({int(x.split("_")[1]) for x in grp if x.startswith("ep_")})
-            for k in ep_ids:
-                pre = f"ep_{k}_"
-                T   = grp[pre+"joint_positions"].shape[0]
-                yield {
-                    "observation":{
-                        "joint_position" : grp[pre+"joint_positions"][:].astype(np.float32),
-                        "gripper_position": grp[pre+"gripper_positions"][:].astype(np.float32),
-                        name_map["view_0"]: grp[pre+"view_0"][:],
-                        name_map["view_1"]: grp[pre+"view_1"][:],
-                        name_map["view_2"]: grp[pre+"view_2"][:],
-                    },
-                    "action_dict":{
-                        "joint_position" : grp[pre+"act_joint_pos"][:].astype(np.float32),
-                        "joint_velocity" : grp[pre+"act_joint_vel"][:].astype(np.float32),
-                        "gripper_position": grp[pre+"act_gripper_pos"][:].astype(np.float32),
-                    },
-                    "language_instruction"  : np.array([instr.encode()]*T),
-                    "language_instruction_2": np.array([b""]*T),
-                    "language_instruction_3": np.array([b""]*T),
-                    "traj_metadata":{
-                        "episode_metadata":{
-                            "file_path": np.array([f"dummy_success_{k}".encode()]*T)
-                        }
-                    },
-                }
+        for episode_name in f.keys():
+            episode_group = f[episode_name]
+            if not isinstance(episode_group, h5py.Group):
+                continue
+
+            # 收集按时间步的数据
+            step_names = [name for name in episode_group.keys() if name.isdigit()]
+            if len(step_names) == 0:
+                continue
+            step_names = sorted(step_names, key=lambda x: int(x))
+
+            obs_list = []
+            act_list = []
+            left_imgs = []
+            right_imgs = []
+            wrist_imgs = []
+
+            for s in step_names:
+                step_group = episode_group[s]
+                if "obs" not in step_group or "action" not in step_group:
+                    continue
+                obs = np.asarray(step_group["obs"]).astype(np.float32)
+                act = np.asarray(step_group["action"]).astype(np.float32)
+                obs_list.append(obs)
+                act_list.append(act)
+                # 图像（若缺失则跳过该帧）
+                try:
+                    left_imgs.append(np.asarray(step_group["rgb_left"]))
+                    right_imgs.append(np.asarray(step_group["rgb_right"]))
+                    wrist_imgs.append(np.asarray(step_group["rgb_wrist"]))
+                except Exception:
+                    # 若任一视角缺失，对齐去掉该步
+                    obs_list.pop()
+                    act_list.pop()
+                    continue
+
+            if len(obs_list) == 0:
+                continue
+
+            obs_arr = np.stack(obs_list, axis=0)                 # (T, 8)
+            act_arr = np.stack(act_list, axis=0)                 # (T, 8)
+            left_arr = np.stack(left_imgs, axis=0)               # (T,256,256,3)
+            right_arr = np.stack(right_imgs, axis=0)             # (T,256,256,3)
+            wrist_arr = np.stack(wrist_imgs, axis=0)             # (T,256,256,3)
+
+            T = obs_arr.shape[0]
+            joint_pos_obs = obs_arr[:, :7].astype(np.float32)    # (T,7)
+            gripper_pos_obs = obs_arr[:, 7:8].astype(np.float32) # (T,1)
+
+            # action 前7位为关节速度，最后一位为夹爪
+            joint_vel_act = act_arr[:, :7].astype(np.float32)    # (T,7)
+            gripper_pos_act = act_arr[:, 7:8].astype(np.float32) # (T,1)
+
+            # 语言与元数据：从文件中读取 prompt
+            def extract_instruction_from_group(name: str, group: h5py.Group) -> str:
+                # 1) 组属性
+                try:
+                    for key in ["instruction", "prompt", "language_instruction", "task"]:
+                        if key in group.attrs:
+                            val = group.attrs[key]
+                            try:
+                                arr = np.array(val)
+                                if arr.ndim == 0:
+                                    val = arr.item()
+                            except Exception:
+                                pass
+                            if isinstance(val, bytes):
+                                return val.decode("utf-8", errors="ignore")
+                            return str(val)
+                except Exception:
+                    pass
+
+                # 2) 组内字符串数据集
+                for key in ["instruction", "prompt", "language_instruction", "task"]:
+                    try:
+                        if key in group and isinstance(group[key], h5py.Dataset):
+                            ds = group[key]
+                            try:
+                                val = ds[()] if ds.shape == () else ds[0]
+                                if isinstance(val, bytes):
+                                    return val.decode("utf-8", errors="ignore")
+                                return str(val)
+                            except Exception:
+                                continue
+                    except Exception:
+                        continue
+
+                # 3) 退化：从组名解析
+                lower = name.lower()
+                m = re.search(r"pick[-_ ]red[-_ ]cube", lower)
+                if m:
+                    return "pick red cube"
+                # 一般化清洗
+                base = name.replace("-", " ").replace("_", " ")
+                base = re.sub(r"\s+", " ", base).strip()
+                return base
+
+            instruction_text = extract_instruction_from_group(episode_name, episode_group)
+            instruction_bytes = np.array([instruction_text.encode("utf-8")] * T)
+            file_path_bytes = np.array([episode_name.encode()] * T)
+
+            yield {
+                "observation":{
+                    "joint_position"       : joint_pos_obs,
+                    "gripper_position"     : gripper_pos_obs,
+                    "exterior_image_1_left": left_arr,
+                    "exterior_image_2_left": right_arr,
+                    "wrist_image_left"     : wrist_arr,
+                },
+                "action_dict":{
+                    # 未提供动作的关节位置，放置为全零占位，形状一致
+                    "joint_position"   : np.zeros_like(joint_pos_obs),
+                    # 关节速度由 action 提供
+                    "joint_velocity"   : joint_vel_act,
+                    "gripper_position" : gripper_pos_act,
+                },
+                "language_instruction"  : instruction_bytes,
+                "language_instruction_2": np.array([b""] * T),
+                "language_instruction_3": np.array([b""] * T),
+                "traj_metadata":{
+                    "episode_metadata":{"file_path": file_path_bytes}
+                },
+            }
 
 # ---------------- Data-loader ----------------
 class DroidH5Dataset:
@@ -49,7 +152,7 @@ class DroidH5Dataset:
         *,
         shuffle      : bool=True,
         action_chunk_size : int=16,
-        action_space : DroidActionSpace=DroidActionSpace.JOINT_POSITION,
+        action_space : DroidActionSpace=DroidActionSpace.JOINT_VELOCITY,
         shuffle_buffer_size : int = 256,
         num_parallel_calls  : int = tf.data.AUTOTUNE,
     ):
@@ -60,9 +163,9 @@ class DroidH5Dataset:
             "observation":{
                 "joint_position"       : tf.TensorSpec((None,7), tf.float32),
                 "gripper_position"     : tf.TensorSpec((None,1), tf.float32),
-                "exterior_image_1_left": tf.TensorSpec((None,180,320,3), tf.uint8),
-                "exterior_image_2_left": tf.TensorSpec((None,180,320,3), tf.uint8),
-                "wrist_image_left"     : tf.TensorSpec((None,180,320,3), tf.uint8),
+                "exterior_image_1_left": tf.TensorSpec((None,256,256,3), tf.uint8),
+                "exterior_image_2_left": tf.TensorSpec((None,256,256,3), tf.uint8),
+                "wrist_image_left"     : tf.TensorSpec((None,256,256,3), tf.uint8),
             },
             "action_dict":{
                 "joint_position"   : tf.TensorSpec((None,7), tf.float32),
@@ -163,17 +266,47 @@ class DroidH5Dataset:
 
 if __name__ == "__main__":
     loader = DroidH5Dataset(
-        h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new.h5",
+        h5_path="/home/yusenluo/pick_red_cube_20.h5",
         batch_size=32,
-        action_space=DroidActionSpace.JOINT_POSITION,
+        action_space=DroidActionSpace.JOINT_VELOCITY,
         shuffle=True,
     )
     for batch in loader:
         print(batch["actions"].shape)   # (32,16,8)
-        print(batch["observation"]["image"].shape)   # (32,180,320,3)
-        print(batch["observation"]["wrist_image"].shape)   # (32,180,320,3)
+        print(batch["observation"]["image"].shape)   # (32,256,256,3)
+        print(batch["observation"]["wrist_image"].shape)   # (32,256,256,3)
         print(batch["observation"]["joint_position"].shape)   # (32,7)
         print(batch["observation"]["gripper_position"].shape)   # (32,1)
         print(batch["prompt"])
+        # 保存前1-2帧的两路图像到 /home/yusenluo/sample_frames
+        import os
+        from pathlib import Path
+        out_dir = Path("/home/yusenluo/sample_frames")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        def save_image_fallback(image_array, output_path):
+            try:
+                import imageio.v3 as iio
+                iio.imwrite(str(output_path), image_array)
+                return str(output_path)
+            except Exception:
+                try:
+                    from PIL import Image
+                    Image.fromarray(image_array).save(str(output_path))
+                    return str(output_path)
+                except Exception:
+                    np.save(str(Path(output_path).with_suffix(".npy")), image_array)
+                    return str(Path(output_path).with_suffix(".npy"))
+
+        num_to_save = min(2, batch["observation"]["image"].shape[0])
+        for frame_index in range(num_to_save):
+            ext_img = batch["observation"]["image"][frame_index]
+            wrist_img = batch["observation"]["wrist_image"][frame_index]
+            ext_path = out_dir / f"frame{frame_index}_exterior.png"
+            wrist_path = out_dir / f"frame{frame_index}_wrist.png"
+            saved_ext = save_image_fallback(ext_img, ext_path)
+            saved_wrist = save_image_fallback(wrist_img, wrist_path)
+            print(f"saved: {saved_ext}")
+            print(f"saved: {saved_wrist}")
         break
   

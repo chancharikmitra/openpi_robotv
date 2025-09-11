@@ -39,7 +39,7 @@ K_GRID       = [10,20,30,40]        # candidate k for KNN
 TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 
 # ---- Head selection mode and target ----
-HEAD_SELECTION_MODE = "best_add"      # "topk" | "best_add" | "reinforce" | "learn_weights"
+HEAD_SELECTION_MODE = "topk"      # "topk" | "best_add" | "reinforce" | "learn_weights"
 TARGET_HEADS        = 20          # target number of heads (not used for learn_weights)
 
 # ---- best_add stopping thresholds ----
@@ -307,21 +307,21 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "pick_train_attention_last_token_keyframe_new_positive.h5"
-    ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
+    ATTN_H5 = "/home/yusenluo/pick_train_attention_last_token_positive_on_robot.h5"
+    # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
 
 
-    with h5py.File(ATTN_H5_EVAL, "r") as f:
-        eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
+    # with h5py.File(ATTN_H5_EVAL, "r") as f:
+    #     eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
 
     model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
     # print("Learned weights:", model.head_weights)
     # print("Head probabilities:", info["head_probabilities"])
     # Evaluate on a separate test set (optional)
-    evaluation_results = evaluate_model_on_h5(ATTN_H5_EVAL, eval_eps, model, ks=K_GRID)
-    print("evaluation results:", evaluation_results["per_k_mse"], evaluation_results["overall_mse"])
+    # evaluation_results = evaluate_model_on_h5(ATTN_H5_EVAL, eval_eps, model, ks=K_GRID)
+    # print("evaluation results:", evaluation_results["per_k_mse"], evaluation_results["overall_mse"])
 
     # Inference: predict actions (via KNN) frame-by-frame for an episode
     test_ep = all_eps[0]
@@ -335,18 +335,18 @@ if __name__ == "__main__":
     print("Pred shape:", action.shape)
 
     # Example: Visualize neighbors for the trained model (optional)
-    # diag = knn_overlap_and_plots(
-    #     attn_h5=ATTN_H5_EVAL,
-    #     episodes=eval_eps,
-    #     model=model,
-    #     ks=K_GRID,
-    #     feature_metric=model.metric,
-    #     action_metric="mse",
-    #     output_dir="knn_viz_debug_proj",
-    #     max_points_for_scatter=400,
-    #     use_tsne=False,
-    #     temp_excl_window=TEMP_EXCL_W,
-    # )
+    diag = knn_overlap_and_plots(
+        attn_h5=ATTN_H5,
+        episodes=all_eps,
+        model=model,
+        ks=K_GRID,
+        feature_metric=model.metric,
+        action_metric="mse",
+        output_dir="knn_viz_debug_cosine_on_robot",
+        max_points_for_scatter=400,
+        use_tsne=False,
+        temp_excl_window=TEMP_EXCL_W,
+    )
 
 
     # ------------------------------------------------------------------

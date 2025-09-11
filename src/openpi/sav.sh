@@ -12,7 +12,7 @@ source /scr/yusenluo/anaconda3/etc/profile.d/conda.sh
 conda activate openpi
 
 
-python generate_activation_dataset.py
+CUDA_VISIBLE_DEVICES=4 python /home/yusenluo/openpi_robotv/src/openpi/generate_activation_dataset_on_robot.py
 
 #python SAV.py
 #python attention_visualize.py

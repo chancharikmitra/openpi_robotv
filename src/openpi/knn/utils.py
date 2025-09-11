@@ -769,16 +769,37 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
             raise KeyError(f"{episode_key}/{frame_key} missing 'last_token_attn'")
         attention = _coerce_float32(np.asarray(frame_group["last_token_attn"]))   # (18,8,256)
 
-        # 组装 joint velocity (7) + gripper position (1)
-        if "joint_velocity" in frame_group and "gripper_position" in frame_group:
+        # 优先读取新结构中的 action_label (8,)
+        if "action_label" in frame_group:
+            action = _coerce_float32(np.asarray(frame_group["action_label"]))
+            action = action.reshape(-1)
+            if action.size != 8:
+                raise ValueError(f"{episode_key}/{frame_key} 'action_label' must have 8 elements, got {action.shape}")
+
+        # 回退到旧结构 joint_velocity(7)+gripper_position(1)
+        elif "joint_velocity" in frame_group and "gripper_position" in frame_group:
             jv = _coerce_float32(np.asarray(frame_group["joint_velocity"]))  # (7,)
             gp = _coerce_float32(np.asarray(frame_group["gripper_position"]))  # (1,) or scalar
+            jv = jv.reshape(-1)
             gp = gp.reshape(-1)
-            if gp.shape[0] != 1:
-                gp = gp[:1]
-            action = np.concatenate([jv.reshape(-1), gp], axis=0)
+            if jv.size != 7:
+                raise ValueError(f"{episode_key}/{frame_key} 'joint_velocity' must have 7 elements, got {jv.shape}")
+            if gp.size == 0:
+                raise ValueError(f"{episode_key}/{frame_key} 'gripper_position' empty")
+            gp = gp[:1]
+            action = np.concatenate([jv, gp], axis=0)
+
+        # 再回退到单字段 pi_droid_action（应为8维）
+        elif "pi_droid_action" in frame_group:
+            action = _coerce_float32(np.asarray(frame_group["pi_droid_action"]))
+            action = action.reshape(-1)
+            if action.size != 8:
+                raise ValueError(f"{episode_key}/{frame_key} 'pi_droid_action' must have 8 elements, got {action.shape}")
+
         else:
-            raise KeyError(f"{episode_key}/{frame_key} missing action fields ('joint_velocity'+'gripper_position' or 'pi_droid_action')")
+            raise KeyError(
+                f"{episode_key}/{frame_key} missing action fields (expected 'action_label' or 'joint_velocity'+'gripper_position' or 'pi_droid_action')"
+            )
 
         attention_list.append(attention)
         action_list.append(action)

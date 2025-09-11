@@ -765,28 +765,28 @@ _CONFIGS = [
         name="pi0_fast_droid_h5_finetune",
         model=pi0_fast.Pi0FASTConfig(
             action_dim=8,
-            action_horizon=10,
+            action_horizon=16,
             max_token_len=180,
             paligemma_variant="gemma_2b_lora"
         ),
         data=H5DroidDataConfig(
-            repo_id="droid",
+            repo_id="on_robot",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5",
+            h5_path="/home/yusenluo/pick-red-cube_250827_20_only.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            action_dim=8, action_horizon=10, max_token_len=180, paligemma_variant="gemma_2b_lora"
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter_with_frozen_img_encoder(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,          
             peak_lr=3e-4,              
-            decay_steps=1_800,         
+            decay_steps=3000,         
             decay_lr=3e-5,             
         ),
 
-        num_train_steps=3000,         
+        num_train_steps=5000,         
         batch_size=16,                
         num_workers=0,       
 
@@ -826,16 +826,16 @@ _CONFIGS = [
     ),
     # DROID H5 Selective Head-Tuning with LoRA DEBUG config.
     TrainConfig(
-        name="pi0_fast_droid_h5_head_lora_tune_debug",
+        name="pi0_fast_droid_h5_head_lora_tune_on_robot",
         model=pi0_fast.Pi0FASTConfig(
             action_dim=8,
-            action_horizon=10,
+            action_horizon=16,
             max_token_len=180,
             paligemma_variant="gemma_2b_lora",  # Enable LoRA variant
         ),
         data=H5DroidDataConfig(
-            repo_id="droid",
-            h5_path="/scr2/yusenluo/openpi/droid_pick_train_positive_new_20.h5",
+            repo_id="on_robot",
+            h5_path="/home/yusenluo/pick-red-cube_250827_20_only.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
@@ -847,9 +847,9 @@ _CONFIGS = [
             #     (0, 3), (17, 5), (17, 7), (17, 2), (17, 6), (0, 6), (17, 4), (17, 1), 
             #     (17, 0), (16, 7), (17, 3), (0, 0), (16, 4), (16, 6), (16, 2), (16, 3), (16, 0), (0, 4), (16, 5), (16, 1)] # SAV worst heads
             trainable_head_indices = [
-                (4, 4), (6, 3), (10, 4), (8, 7), (9, 4), (4, 0), (11, 6), (10, 5), (0, 5), (3, 6),
-                (6, 7), (4, 3), (0, 7), (13, 5), (8, 2), (1, 2), (3, 2), (12, 0), (13, 7), (14, 4)
-            ] # KNN Regression cosine K=40 (Top K selection)
+                (13, 1), (11, 5), (12, 1), (12, 6), (7, 3), (10, 5), (14, 7), (9, 1), (13, 7), (8, 0),
+                (7, 1), (11, 7), (7, 7), (10, 1), (11, 4), (8, 4), (13, 3), (15, 2), (9, 6), (16, 5)
+            ] # KNN cosine K=30: [105, 93, 97, 102, 59, 85, 119, 73, 111, 64, 57, 95, 63, 81, 92, 68, 107, 122, 78, 133]
             # trainable_head_indices = [
             #     (8, 0), (6, 1), (14, 4), (1, 5), (1, 1), (4, 7), (14, 1), (10, 7), (7, 2), (10, 2),
             #     (6, 6), (0, 4), (1, 2), (7, 3), (13, 5), (4, 5), (9, 5), (4, 6), (3, 4), (5, 5)
@@ -857,23 +857,23 @@ _CONFIGS = [
         ),
         # Use LoRA freeze filter to freeze original weights, only train LoRA adapters
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            action_dim=8, action_horizon=10, max_token_len=180, paligemma_variant="gemma_2b_lora"
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter_with_frozen_img_encoder(),
 
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
             peak_lr=1.0e-4,      
-            decay_steps=2_700,  
+            decay_steps=3000,  
             decay_lr=1.0e-5,  
         ),
-        num_train_steps=3000,
+        num_train_steps=5000,
         save_interval=500,
         keep_period=500,
         # ---------------------------------
         batch_size=16,  # Smaller batch size for faster startup
         num_workers=0,
-        log_interval=1,
+        log_interval=200,
         ema_decay=None,  # Turn off EMA for LoRA finetuning
     ),
     #
