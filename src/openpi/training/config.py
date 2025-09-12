@@ -755,7 +755,7 @@ _CONFIGS = [
     # DROID H5 configs.
     #
     TrainConfig(
-        name="pi0_fast_droid_h5_finetune",
+        name="pi0_fast_base_h5_finetune",
         model=pi0_fast.Pi0FASTConfig(
             action_dim=8,
             action_horizon=16,
@@ -763,16 +763,16 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora"
         ),
         data=H5DroidDataConfig(
-            repo_id="on_robot",
+            repo_id="on_robot_pick_up_red_mug_joint_position",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
             h5_path="/scr2/yusenluo/openpi_robotv/robotv_dataset/pick-up-red-mug-20.h5",
-            action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
+            action_space=droid_h5_dataset.DroidActionSpace.JOINT_POSITION,
             fixed_instruction="pick up red mug",  # fixed instruction
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter_with_frozen_img_encoder(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_base/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
             peak_lr=5e-5,      
