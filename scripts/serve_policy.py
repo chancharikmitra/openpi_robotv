@@ -19,6 +19,14 @@ class EnvMode(enum.Enum):
     DROID = "droid"
     LIBERO = "libero"
 
+    KNN_COSINE_K_30_3000 = "KNN_COSINE_K_30_3000"
+    KNN_COSINE_K_30_4999 = "KNN_COSINE_K_30_4999"
+    ALL_HEADS_3000 = "ALL_HEADS_3000"
+    ALL_HEADS_4999 = "ALL_HEADS_4999"
+    
+
+    
+
 
 @dataclasses.dataclass
 class Checkpoint:
@@ -73,6 +81,29 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         config="pi0_fast_libero",
         dir="gs://openpi-assets/checkpoints/pi0_fast_libero",
     ),
+
+    EnvMode.LIBERO: Checkpoint(
+        config="pi0_fast_libero",
+        dir="gs://openpi-assets/checkpoints/pi0_fast_libero",
+    ),
+
+    EnvMode.KNN_COSINE_K_30_3000: Checkpoint(
+        config="pi0_fast_droid_h5_head_lora_tune_on_robot",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.11_train/KNN_cosine_K=30/3000",
+    ),
+    EnvMode.KNN_COSINE_K_30_4999: Checkpoint(
+        config="pi0_fast_droid_h5_head_lora_tune_on_robot",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.11_train/KNN_cosine_K=30/4999",
+    ),
+    EnvMode.ALL_HEADS_3000: Checkpoint(
+        config="pi0_fast_droid_h5_finetune",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.11_train/all_heads/3000",
+    ),
+    EnvMode.ALL_HEADS_4999: Checkpoint(
+        config="pi0_fast_droid_h5_finetune",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.11_train/all_heads/4999",
+    ),
+
 }
 
 
