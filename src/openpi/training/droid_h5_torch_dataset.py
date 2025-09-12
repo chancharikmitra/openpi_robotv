@@ -15,7 +15,8 @@ class TorchDroidH5Dataset:
     Expects H5 layout:
       /<episode_name>/<step_id>
         - obs: (8,) float32 -> [7 joint_position, 1 gripper_position]
-        - action: (15,) float32 -> [7 joint_position, 7 joint_velocity, 1 gripper_position]
+        - action_pos: (8,) float32 -> [7 joint_position, 1 gripper_position]
+        - action_vel: (8,) float32 -> [7 joint_velocity, 1 gripper_position]
         - rgb_left, rgb_right, rgb_wrist: (256,256,3) uint8
 
     Emits per-step samples with keys aligned to openpi pipeline:
@@ -51,18 +52,20 @@ class TorchDroidH5Dataset:
     def __len__(self) -> int:
         return len(self._indices)
 
-    def _get_episode_arrays(self, f: h5py.File, ep: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _get_episode_arrays(self, f: h5py.File, ep: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         grp = f[ep]
         steps = sorted([s for s in grp.keys() if s.isdigit()], key=lambda x: int(x))
-        # stack obs and action into arrays for chunking
+        # stack obs and actions into arrays for chunking
         obs = [np.asarray(grp[s]["obs"], dtype=np.float32) for s in steps]
-        act = [np.asarray(grp[s]["action"], dtype=np.float32) for s in steps]
+        act_vel = [np.asarray(grp[s]["act_vel"], dtype=np.float32) for s in steps]
+        act_pos = [np.asarray(grp[s]["act_pos"], dtype=np.float32) for s in steps]
         obs_arr = np.stack(obs, axis=0)  # (T,8)
-        act_arr = np.stack(act, axis=0)  # (T,15)
+        action_vel_arr = np.stack(act_vel, axis=0)  # (T,8)
+        action_pos_arr = np.stack(act_pos, axis=0)  # (T,8)
         # split
         joint_pos_obs = obs_arr[:, :7].astype(np.float32)
         gripper_pos_obs = obs_arr[:, 7:8].astype(np.float32)
-        return joint_pos_obs, gripper_pos_obs, act_arr.astype(np.float32)
+        return joint_pos_obs, gripper_pos_obs, action_vel_arr.astype(np.float32), action_pos_arr.astype(np.float32)
 
     def _infer_prompt(self, ep: str) -> str:
         if self._fixed_instruction is not None:
@@ -81,13 +84,13 @@ class TorchDroidH5Dataset:
             wrist_img = np.asarray(sg["rgb_wrist"])       # (256,256,3)
 
             # obs arrays for this episode
-            jp_obs, gp_obs, act_arr = self._get_episode_arrays(f, ep)  # (T,7), (T,1), (T,15)
-            T = act_arr.shape[0]
+            jp_obs, gp_obs, action_vel_arr, action_pos_arr = self._get_episode_arrays(f, ep)  # (T,7), (T,1), (T,8), (T,8)
+            T = action_vel_arr.shape[0]
 
             # action split for the whole episode
-            jpos = act_arr[:, :7]
-            jvel = act_arr[:, 7:14]
-            gpos = act_arr[:, 14:15]
+            jpos = action_pos_arr[:, :7]
+            jvel = action_vel_arr[:, :7]
+            gpos = action_pos_arr[:, 7:8]
 
             # build chunk starting at step_idx
             actions = _build_action_chunk(
@@ -153,10 +156,10 @@ def _build_action_chunk(
     return actions.astype(np.float32)
 
 if __name__ == "__main__":
-    h5_path = "/scr2/yusenluo/openpi_robotv/robotv_dataset/pick_red_cube_20.h5"
+    h5_path = "/scr2/yusenluo/openpi_robotv/pick_green_cube_20.h5"
     action_horizon = 16
     action_space = DroidActionSpace.JOINT_VELOCITY
-    fixed_instruction = "pick up red mug"
+    fixed_instruction = "pick up green cube"
     num_samples = 300
     start_index = 200
     ds = TorchDroidH5Dataset(
