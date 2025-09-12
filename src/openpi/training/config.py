@@ -825,6 +825,47 @@ _CONFIGS = [
         keep_period=250, 
         ema_decay=None,  # Turn off EMA for LoRA finetuning            
     ),
+    TrainConfig(
+        name="pi0_fast_droid_h5_finetune_sanity_check_pick_green_cube_KNN_cosine_K=20",
+        model=pi0_fast.Pi0FASTConfig(
+            action_dim=8,
+            action_horizon=16,
+            max_token_len=180,
+            paligemma_variant="gemma_2b_lora"
+        ),
+        data=H5DroidDataConfig(
+            repo_id="on_robot_pick_up_green_cube_joint_velocity_sanity_check_KNN_cosine_K=20",
+            # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
+            h5_path="/scr2/yusenluo/openpi_robotv/pick_green_cube_1.h5",
+            action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
+            fixed_instruction="pick up green cube",  # fixed instruction
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            trainable_head_indices=[
+                (4, 0), (5, 5), (5, 1), (6, 7), (10, 0), (13, 7), (10, 5), (16, 6), (3, 0), (10, 4),
+                (8, 2), (13, 6), (10, 7), (13, 5), (12, 2), (16, 5), (16, 0), (7, 6), (8, 7), (14, 1)
+            ] # Selected heads (20): [32, 45, 41, 55, 80, 111, 85, 134, 24, 84, 66, 110, 87, 109, 98, 133, 128, 62, 71, 113]
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter_with_frozen_img_encoder(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
+        lr_schedule =_optimizer.CosineDecaySchedule(
+            warmup_steps=100,
+            peak_lr=5e-5,      
+            decay_steps=1000,  
+            decay_lr=5e-6,  
+        ),
+
+        num_train_steps=1500,         
+        batch_size=16,                
+        num_workers=4,       
+
+        log_interval=100,               
+        save_interval=250,           
+        keep_period=250, 
+        ema_decay=None,  # Turn off EMA for LoRA finetuning            
+    ),
     #
     TrainConfig(
         name="pi0_fast_droid_h5_full_finetune",
