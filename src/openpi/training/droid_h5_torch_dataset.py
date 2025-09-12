@@ -90,28 +90,14 @@ class TorchDroidH5Dataset:
             gpos = act_arr[:, 14:15]
 
             # build chunk starting at step_idx
-            horizon = self._H
-            idx = np.arange(step_idx, step_idx + horizon)
-            idx_clamped = np.minimum(idx, T - 1)
-
-            if self._action_space == DroidActionSpace.JOINT_POSITION:
-                # actions = [joint_position, gripper_position]
-                chunk_pos = jpos[idx_clamped]  # (H,7)
-                chunk_gp = gpos[idx_clamped]   # (H,1)
-                actions = np.concatenate([chunk_pos, chunk_gp], axis=-1)
-            else:
-                # actions = [joint_velocity, gripper_position], tail pad velocity with zeros, keep last gpos
-                chunk_vel = jvel[idx_clamped].copy()  # (H,7)
-                over_mask = (idx >= T)
-                if over_mask.any():
-                    # zero-pad velocities for indices beyond T-1
-                    chunk_vel[over_mask] = 0.0
-                chunk_gp = gpos[idx_clamped]
-                if (idx >= T).any():
-                    # fill gpos beyond tail with last value
-                    chunk_gp[over_mask] = gpos[-1]
-                actions = np.concatenate([chunk_vel, chunk_gp], axis=-1)  # (H,8)
-                assert actions.shape == (horizon, 8)
+            actions = _build_action_chunk(
+                jpos=jpos,
+                jvel=jvel,
+                gpos=gpos,
+                step_idx=step_idx,
+                horizon=self._H,
+                action_space=self._action_space,
+            )
 
             sample = {
                 "observation/exterior_image_1_left": img_left,
@@ -124,6 +110,47 @@ class TorchDroidH5Dataset:
             return sample
 
 
+
+def _build_action_chunk(
+    *,
+    jpos: np.ndarray,      # (T,7)
+    jvel: np.ndarray,      # (T,7)
+    gpos: np.ndarray,      # (T,1)
+    step_idx: int,
+    horizon: int,
+    action_space: str,
+) -> np.ndarray:
+    """
+    Construct an action chunk of length `horizon` starting at `step_idx`.
+
+    - For JOINT_POSITION: actions = [joint_position(7), gripper_position(1)]
+    - For JOINT_VELOCITY: actions = [joint_velocity(7), gripper_position(1)]
+      Tail padding rule: velocities beyond tail → zeros; gripper → last value.
+    """
+    T = int(jpos.shape[0])
+    assert jpos.shape == (T, 7) and jvel.shape == (T, 7) and gpos.shape == (T, 1), (
+        f"bad shapes: jpos={jpos.shape}, jvel={jvel.shape}, gpos={gpos.shape}")
+
+    idx = np.arange(step_idx, step_idx + horizon)
+    idx_clamped = np.minimum(idx, T - 1)
+
+    if action_space == DroidActionSpace.JOINT_POSITION:
+        chunk_pos = jpos[idx_clamped]               # (H,7)
+        chunk_gp = gpos[idx_clamped]                # (H,1)
+        actions = np.concatenate([chunk_pos, chunk_gp], axis=-1)  # (H,8)
+    else:
+        chunk_vel = jvel[idx_clamped].copy()        # (H,7)
+        over_mask = (idx >= T)
+        if over_mask.any():
+            # repeat last valid velocity for positions beyond tail
+            chunk_vel[over_mask] = jvel[-1]
+        chunk_gp = gpos[idx_clamped]
+        if over_mask.any():
+            chunk_gp[over_mask] = gpos[-1]          # keep last gripper
+        actions = np.concatenate([chunk_vel, chunk_gp], axis=-1)  # (H,8)
+
+    assert actions.shape == (horizon, 8), f"expected (H,8) got {actions.shape}"
+    return actions.astype(np.float32)
 
 if __name__ == "__main__":
     h5_path = "/scr2/yusenluo/openpi_robotv/robotv_dataset/pick_red_cube_20.h5"
