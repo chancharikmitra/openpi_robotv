@@ -355,6 +355,7 @@ class RLDSDroidDataConfig(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
+                        # Create keys expected by DroidInputs from RLDS fields
                         "observation/exterior_image_1_left": "observation/image",
                         "observation/wrist_image_left": "observation/wrist_image",
                         "observation/joint_position": "observation/joint_position",
@@ -406,20 +407,8 @@ class H5DroidDataConfig(DataConfigFactory):
     
 
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
-        repack_transform = _transforms.Group(
-            inputs=[
-                _transforms.RepackTransform(
-                    {
-                        "observation/exterior_image_1_left": "observation/image",
-                        "observation/wrist_image_left": "observation/wrist_image",
-                        "observation/joint_position": "observation/joint_position",
-                        "observation/gripper_position": "observation/gripper_position",
-                        "actions": "actions",
-                        "prompt": "prompt",
-                    }
-                )
-            ]
-        )
+        # H5 torch dataset already uses keys expected by DroidInputs; no repack needed
+        repack_transform = _transforms.Group(inputs=[])
 
         data_transforms = _transforms.Group(
             inputs=[
@@ -786,14 +775,14 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
-            peak_lr=2.5e-5,      
+            peak_lr=5e-5,      
             decay_steps=3000,  
-            decay_lr=2.5e-6,  
+            decay_lr=5e-6,  
         ),
 
-        num_train_steps=5000,         
+        num_train_steps=3000,         
         batch_size=16,                
-        num_workers=0,       
+        num_workers=8,       
 
         log_interval=200,               
         save_interval=500,           
@@ -869,16 +858,16 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
             warmup_steps=300,
-            peak_lr=2.5e-5,      
+            peak_lr=5e-5,      
             decay_steps=3000,  
-            decay_lr=2.5e-6,  
+            decay_lr=5e-6,  
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
         save_interval=500,
         keep_period=500,
         # ---------------------------------
         batch_size=16,  # Smaller batch size for faster startup
-        num_workers=0,
+        num_workers=8,
         log_interval=200,
         ema_decay=None,  # Turn off EMA for LoRA finetuning
     ),

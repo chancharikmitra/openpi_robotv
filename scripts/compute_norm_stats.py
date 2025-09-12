@@ -91,22 +91,25 @@ def create_h5_dataloader(
     max_frames: int | None = None,
 ) -> tuple[_data_loader.Dataset, int]:
     dataset = _data_loader.create_h5_dataset(data_config, action_horizon, batch_size, shuffle=False)
-    dataset = _data_loader.IterableTransformedDataset(
+    dataset = _data_loader.TransformedDataset(
         dataset,
         [
             *data_config.repack_transforms.inputs,
             *data_config.data_transforms.inputs,
-            # Remove strings since they are not supported by JAX and are not needed to compute norm stats.
+            # Remove strings (e.g., prompt) since not needed for statistics and unsupported by JAX.
             RemoveStrings(),
         ],
-        is_batched=True,
     )
     if max_frames is not None and max_frames < len(dataset):
         num_batches = max_frames // batch_size
     else:
         num_batches = len(dataset) // batch_size
-    data_loader = _data_loader.RLDSDataLoader(
+    shuffle = False
+    data_loader = _data_loader.TorchDataLoader(
         dataset,
+        local_batch_size=batch_size,
+        num_workers=8,
+        shuffle=shuffle,
         num_batches=num_batches,
     )
     return data_loader, num_batches

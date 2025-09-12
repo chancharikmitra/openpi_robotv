@@ -322,7 +322,11 @@ def create_torch_data_loader(
             execute in the main process.
         seed: The seed to use for shuffling the data.
     """
-    dataset = create_torch_dataset(data_config, action_horizon, model_config)
+    # If an H5 path is provided, prefer the Torch H5 dataset (map-style) here
+    if data_config.h5_path is not None:
+        dataset = create_h5_dataset(data_config, action_horizon, batch_size, shuffle=shuffle)
+    else:
+        dataset = create_torch_dataset(data_config, action_horizon, model_config)
     dataset = transform_dataset(dataset, data_config, skip_norm_stats=skip_norm_stats)
 
     data_loader = TorchDataLoader(
