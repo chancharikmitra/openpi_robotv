@@ -100,7 +100,8 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
     Per-frame fields:
       - obs: (8,) float64 → first 7 are joint_position, last 1 is gripper_position
-      - action: (15,) float64 → [7 joint_position, 7 joint_velocity, 1 gripper_position]
+      - act_vel: (8,) float64 → [7 joint_velocity, 1 gripper_position]
+      - act_pos: (8,) float64 → [7 joint_position, 1 gripper_position]
       - rgb_left / rgb_right / rgb_wrist: (256,256,3) uint8
 
     Returns {task_name: {ep_idx: {observations, actions, action_dict_list}}}.
@@ -179,21 +180,22 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             for s in steps:
                 sg = grp[s]
-                req = all(k in sg for k in ("obs", "action", "rgb_left", "rgb_wrist"))
+                req = all(k in sg for k in ("obs", "act_vel", "act_pos", "rgb_left", "rgb_wrist"))
                 if not req:
                     continue
                 obs = np.asarray(sg["obs"]).astype(np.float32)          # (8,)
-                act = np.asarray(sg["action"]).astype(np.float32)       # (15,)
+                act_vel = np.asarray(sg["act_vel"]).astype(np.float32)  # (8,)
+                act_pos = np.asarray(sg["act_pos"]).astype(np.float32)  # (8,)
                 img_left  = np.asarray(sg["rgb_left"])                  # (256,256,3)
                 img_wrist = np.asarray(sg["rgb_wrist"])                 # (256,256,3)
 
                 # Normalize dtypes/shapes for consistent stacking
                 jp = np.asarray(obs[:7], dtype=np.float32)      # (7,)
                 gp = np.asarray(obs[7:8], dtype=np.float32)     # (1,)
-                # New action layout: [jpos(7), jvel(7), gpos(1)]
-                jpos_act = np.asarray(act[:7], dtype=np.float32)      # (7,)
-                jv       = np.asarray(act[7:14], dtype=np.float32)    # (7,)
-                ga       = np.asarray(act[14], dtype=np.float32)      # scalar
+                # New action layout: separate vel and pos arrays
+                jpos_act = np.asarray(act_pos[:7], dtype=np.float32)   # (7,)
+                jv       = np.asarray(act_vel[:7], dtype=np.float32)   # (7,)
+                ga       = np.asarray(act_vel[7], dtype=np.float32)    # scalar
 
                 obs_list.append({
                     "observation/exterior_image_1_left": img_left,
