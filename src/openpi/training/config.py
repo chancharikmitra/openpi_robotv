@@ -832,7 +832,7 @@ _CONFIGS = [
             action_dim=8,
             action_horizon=16,
             max_token_len=180,
-            # paligemma_variant="gemma_2b_lora"
+            paligemma_variant="gemma_2b_lora"
         ),
         data=H5DroidDataConfig(
             repo_id="on_robot_pick_up_green_cube_joint_velocity_sanity_check_20",
@@ -843,7 +843,7 @@ _CONFIGS = [
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=8, action_horizon=16, max_token_len=180, 
-            # paligemma_variant="gemma_2b_lora"
+            paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
@@ -854,7 +854,7 @@ _CONFIGS = [
         ),
 
         num_train_steps=5000,         
-        batch_size=12,                
+        batch_size=16,                
         num_workers=4,       
 
         log_interval=200,               
