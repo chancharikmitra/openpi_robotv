@@ -862,6 +862,44 @@ _CONFIGS = [
         keep_period=500, 
         ema_decay=None,  # Turn off EMA for LoRA finetuning            
     ),
+    
+    TrainConfig(
+        name="pi0_fast_droid_h5_finetune_sanity_check_pick_green_cube_FFT",
+        model=pi0_fast.Pi0FASTConfig(
+            action_dim=8,
+            action_horizon=16,
+            max_token_len=180,
+            # paligemma_variant="gemma_2b_lora"
+        ),
+        data=H5DroidDataConfig(
+            repo_id="on_robot_pick_up_green_cube_joint_velocity_sanity_check_20",
+            # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
+            h5_path="/home/yusenluo/openpi_robotv/pick_green_cube_20.h5",
+            action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
+            fixed_instruction="pick up green cube",  # fixed instruction
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=8, action_horizon=16, max_token_len=180, 
+            # paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter_with_frozen_img_encoder(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
+        lr_schedule =_optimizer.CosineDecaySchedule(
+            warmup_steps=300,
+            peak_lr=5e-5,      
+            decay_steps=3000,  
+            decay_lr=5e-6,  
+        ),
+
+        num_train_steps=5000,         
+        batch_size=16,                
+        num_workers=4,       
+
+        log_interval=200,               
+        save_interval=500,           
+        keep_period=500, 
+        ema_decay=None,  # Turn off EMA for LoRA finetuning            
+    ),
+    #
     TrainConfig(
         name="pi0_fast_droid_h5_finetune_sanity_check_pick_green_cube_KNN_cosine_K=20",
         model=pi0_fast.Pi0FASTConfig(
@@ -871,9 +909,9 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora"
         ),
         data=H5DroidDataConfig(
-            repo_id="on_robot_pick_up_green_cube_joint_velocity_sanity_check_KNN_cosine_K=20",
+            repo_id="on_robot_pick_up_green_cube_joint_velocity_sanity_check_KNN_cosine_K=20_20",
             # Set this to the path to your DROID RLDS dataset (the parent directory of the `droid` directory).
-            h5_path="/scr2/yusenluo/openpi_robotv/pick_green_cube_1.h5",
+            h5_path="/home/yusenluo/openpi_robotv/pick_green_cube_20.h5",
             action_space=droid_h5_dataset.DroidActionSpace.JOINT_VELOCITY,
             fixed_instruction="pick up green cube",  # fixed instruction
         ),
@@ -888,19 +926,19 @@ _CONFIGS = [
         ).get_freeze_filter_with_frozen_img_encoder(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
         lr_schedule =_optimizer.CosineDecaySchedule(
-            warmup_steps=100,
+            warmup_steps=300,
             peak_lr=5e-5,      
-            decay_steps=1000,  
+            decay_steps=3000,  
             decay_lr=5e-6,  
         ),
 
-        num_train_steps=1500,         
+        num_train_steps=5000,         
         batch_size=16,                
         num_workers=4,       
 
-        log_interval=100,               
-        save_interval=250,           
-        keep_period=250, 
+        log_interval=200,               
+        save_interval=500,           
+        keep_period=500, 
         ema_decay=None,  # Turn off EMA for LoRA finetuning            
     ),
     #
