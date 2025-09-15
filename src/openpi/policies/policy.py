@@ -104,7 +104,8 @@ class Policy(BasePolicy):
 
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()
-        result = self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs)
+        # result = self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs)
+        result = self._sample_actions(sample_rng_or_pytorch_device, observation)
 
         # @yusen: unpack optional attention outputs and optional decode step
         actions = result
