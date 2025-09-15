@@ -95,6 +95,11 @@ class DataConfig:
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
     # Path to the data filter file for DROID dataset
     filter_dict_path: str | None = None
+    # Path to the H5 file for DROID dataset.
+    h5_path: str | None = None
+    # Fixed instruction for DROID dataset.
+    fixed_instruction: str | None = None
+    # Action space for DROID dataset.
 
 
 class GroupFactory(Protocol):
@@ -170,6 +175,9 @@ class DataConfigFactory(abc.ABC):
     assets: AssetsConfig = dataclasses.field(default_factory=AssetsConfig)
     # Base config that will be updated by the factory.
     base_config: tyro.conf.Suppress[DataConfig | None] = None
+    # h5_path: str | None = None
+    # action_space: droid_h5_dataset.DroidActionSpace | None = None
+    # fixed_instruction: str | None = None
 
     @abc.abstractmethod
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
@@ -666,6 +674,86 @@ _CONFIGS = [
         # Check the base TrainConfig class for a full list of available hyperparameters.
         num_train_steps=30_000,
     ),
+
+    # Fine-tuning on custom LeRobot dataset converted from single H5
+    TrainConfig(
+        name="pi0_fast_droid_lerobot_finetune_green_cube",
+        model=pi0_fast.Pi0FASTConfig(
+            action_dim=8,
+            action_horizon=16,
+            max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/pick_up_green_cube_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1000,
+            peak_lr=2.5e-5,
+            decay_steps=25000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=25000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+    
+    TrainConfig(
+        name="pi0_droid_lerobot_finetune_green_cube",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/pick_up_green_cube_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
     TrainConfig(
         name="pi0_libero_low_mem_finetune",
         # Here is an example of loading a pi0 model for LoRA fine-tuning.

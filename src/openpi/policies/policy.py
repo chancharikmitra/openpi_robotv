@@ -61,11 +61,22 @@ class Policy(BasePolicy):
             self._sample_actions = model.sample_actions
         else:
             # JAX model setup
-            self._sample_actions = nnx_utils.module_jit(model.sample_actions)
+            # @yusen: mark attention-return flags as static to avoid TracerBoolConversionError under JIT
+            self._sample_actions = nnx_utils.module_jit(
+                model.sample_actions,
+                static_argnames=("return_attention_heads", "return_attention_probs"),
+            )
             self._rng = rng or jax.random.key(0)
 
     @override
-    def infer(self, obs: dict, *, noise: np.ndarray | None = None) -> dict:  # type: ignore[misc]
+    def infer(
+        self,
+        obs: dict,
+        *,
+        noise: np.ndarray | None = None,
+        return_attention_heads: bool = False,
+        return_attention_probs: bool = False,
+    ) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
@@ -87,12 +98,26 @@ class Policy(BasePolicy):
                 noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
             sample_kwargs["noise"] = noise
 
+        # @yusen: pass attention-return flags through to sample_actions
+        sample_kwargs["return_attention_heads"] = return_attention_heads
+        sample_kwargs["return_attention_probs"] = return_attention_probs
+
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()
-        outputs = {
-            "state": inputs["state"],
-            "actions": self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs),
-        }
+        result = self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs)
+
+        # @yusen: unpack optional attention outputs and optional decode step
+        actions = result
+        attention_outputs = None
+        decode_step = None
+        if isinstance(result, tuple):
+            if len(result) == 2:
+                actions, attention_outputs = result
+            elif len(result) == 3:
+                actions, attention_outputs, decode_step = result
+
+        outputs = {"state": inputs["state"], "actions": actions}
+        
         model_time = time.monotonic() - start_time
         if self._is_pytorch_model:
             outputs = jax.tree.map(lambda x: np.asarray(x[0, ...].detach().cpu()), outputs)
@@ -103,6 +128,12 @@ class Policy(BasePolicy):
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
+        if attention_outputs is not None:
+            outputs["attention_outputs"] = attention_outputs
+            # print("attention_outputs:", outputs["attention_outputs"])
+        if decode_step is not None:
+            outputs["decode_step"] = decode_step
+        # print("outputs:", outputs)
         return outputs
 
     @property

@@ -221,7 +221,9 @@ class Pi0(_model.BaseModel):
         *,
         num_steps: int | at.Int[at.Array, ""] = 10,
         noise: at.Float[at.Array, "b ah ad"] | None = None,
-    ) -> _model.Actions:
+        return_attention_heads: bool = False,
+        return_attention_probs: bool = False,
+    ) -> _model.Actions | tuple[_model.Actions, dict[str, at.Array]]:
         observation = _model.preprocess_observation(None, observation, train=False)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
         # distribution. yes, this is the opposite of the pi0 paper, and I'm sorry.
@@ -230,11 +232,31 @@ class Pi0(_model.BaseModel):
         if noise is None:
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
 
-        # first fill KV cache with a forward pass of the prefix
+        # @yusen: Pass attention flags during prefix prefill to collect attention outputs
         prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
         prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
         positions = jnp.cumsum(prefix_mask, axis=1) - 1
-        _, kv_cache = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask, positions=positions)
+        attention_outputs: dict[str, at.Array] = {}
+        if return_attention_heads or return_attention_probs:
+            (prefix_out, _), kv_cache, out = self.PaliGemma.llm(
+                [prefix_tokens, None],
+                mask=prefix_attn_mask,
+                positions=positions,
+                return_attention_heads=return_attention_heads,
+                return_attention_probs=return_attention_probs,
+            )
+            if return_attention_heads:
+                attn_heads = out.get("attention_heads")
+                if attn_heads is not None:
+                    # @yusen: Align key and shape with FAST pipeline (add leading dim)
+                    attention_outputs["llm_activations"] = attn_heads[None, ...]
+            if return_attention_probs:
+                attn_probs = out.get("attention_probs")
+                if attn_probs is not None:
+                    # @yusen: Store prefill attention probabilities (add leading dim for FAST alignment)
+                    attention_outputs["llm_attn_probs_prefill"] = attn_probs[None, ...]
+        else:
+            _, kv_cache = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask, positions=positions)
 
         def step(carry):
             x_t, time = carry
@@ -276,4 +298,9 @@ class Pi0(_model.BaseModel):
             return time >= -dt / 2
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+
+        if return_attention_heads or return_attention_probs:
+            # @yusen: Return actions with attention collected during prefix prefill
+            return x_0, attention_outputs
+
         return x_0
