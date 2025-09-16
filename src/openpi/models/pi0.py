@@ -138,7 +138,12 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_suffix(
-        self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
+        self,
+        obs: _model.Observation,
+        noisy_actions: _model.Actions,
+        timestep: at.Float[at.Array, " b"],
+        *,
+        include_action_tokens: bool = True,
     ) -> tuple[
         at.Float[at.Array, "b s emb"],
         at.Bool[at.Array, "b s"],
@@ -156,30 +161,34 @@ class Pi0(_model.BaseModel):
             # image/language inputs do not attend to state or actions
             ar_mask += [True]
 
-        action_tokens = self.action_in_proj(noisy_actions)
-        # embed timestep using sine-cosine positional encoding with sensitivity in the range [0, 1]
-        time_emb = posemb_sincos(timestep, self.action_in_proj.out_features, min_period=4e-3, max_period=4.0)
-        if self.pi05:
-            # time MLP (for adaRMS)
-            time_emb = self.time_mlp_in(time_emb)
-            time_emb = nnx.swish(time_emb)
-            time_emb = self.time_mlp_out(time_emb)
-            time_emb = nnx.swish(time_emb)
-            action_expert_tokens = action_tokens
-            adarms_cond = time_emb
+        if include_action_tokens:
+            action_tokens = self.action_in_proj(noisy_actions)
+            # embed timestep using sine-cosine positional encoding with sensitivity in the range [0, 1]
+            time_emb = posemb_sincos(timestep, self.action_in_proj.out_features, min_period=4e-3, max_period=4.0)
+            if self.pi05:
+                # time MLP (for adaRMS)
+                time_emb = self.time_mlp_in(time_emb)
+                time_emb = nnx.swish(time_emb)
+                time_emb = self.time_mlp_out(time_emb)
+                time_emb = nnx.swish(time_emb)
+                action_expert_tokens = action_tokens
+                adarms_cond = time_emb
+            else:
+                # mix timestep + action information using an MLP (no adaRMS)
+                time_tokens = einops.repeat(time_emb, "b emb -> b s emb", s=self.action_horizon)
+                action_time_tokens = jnp.concatenate([action_tokens, time_tokens], axis=-1)
+                action_time_tokens = self.action_time_mlp_in(action_time_tokens)
+                action_time_tokens = nnx.swish(action_time_tokens)
+                action_time_tokens = self.action_time_mlp_out(action_time_tokens)
+                action_expert_tokens = action_time_tokens
+                adarms_cond = None
+            tokens.append(action_expert_tokens)
+            input_mask.append(jnp.ones(action_expert_tokens.shape[:2], dtype=jnp.bool_))
+            # image/language/state inputs do not attend to action tokens
+            ar_mask += [True] + ([False] * (self.action_horizon - 1))
         else:
-            # mix timestep + action information using an MLP (no adaRMS)
-            time_tokens = einops.repeat(time_emb, "b emb -> b s emb", s=self.action_horizon)
-            action_time_tokens = jnp.concatenate([action_tokens, time_tokens], axis=-1)
-            action_time_tokens = self.action_time_mlp_in(action_time_tokens)
-            action_time_tokens = nnx.swish(action_time_tokens)
-            action_time_tokens = self.action_time_mlp_out(action_time_tokens)
-            action_expert_tokens = action_time_tokens
-            adarms_cond = None
-        tokens.append(action_expert_tokens)
-        input_mask.append(jnp.ones(action_expert_tokens.shape[:2], dtype=jnp.bool_))
-        # image/language/state inputs do not attend to action tokens
-        ar_mask += [True] + ([False] * (self.action_horizon - 1))
+            # @yusen: state-only path (no action tokens)
+            adarms_cond = None if not self.pi05 else None
         tokens = jnp.concatenate(tokens, axis=1)
         input_mask = jnp.concatenate(input_mask, axis=1)
         ar_mask = jnp.array(ar_mask)
@@ -223,6 +232,8 @@ class Pi0(_model.BaseModel):
         noise: at.Float[at.Array, "b ah ad"] | None = None,
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
+        return_state_heads: bool = False,
+        return_state_and_first_action_heads: bool = False,
     ) -> _model.Actions | tuple[_model.Actions, dict[str, at.Array]]:
         observation = _model.preprocess_observation(None, observation, train=False)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
@@ -299,7 +310,43 @@ class Pi0(_model.BaseModel):
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
 
-        if return_attention_heads or return_attention_probs:
+        # @yusen: optionally extract state-only or (state+first action) heads via a single extra forward
+        if (return_state_heads or return_state_and_first_action_heads) and not self.pi05:
+            zeros_time = jnp.zeros((batch_size,), dtype=observation.state.dtype)
+            if return_state_and_first_action_heads:
+                sa_tokens, sa_mask, sa_ar_mask, sa_adarms = self.embed_suffix(
+                    observation, x_0, zeros_time, include_action_tokens=True
+                )
+            else:
+                sa_tokens, sa_mask, sa_ar_mask, sa_adarms = self.embed_suffix(
+                    observation, x_0, zeros_time, include_action_tokens=False
+                )
+            sa_attn_mask = make_attn_mask(sa_mask, sa_ar_mask)
+            prefix_attn_mask_rep = einops.repeat(prefix_mask, "b p -> b s p", s=sa_tokens.shape[1])
+            full_attn_mask_sa = jnp.concatenate([prefix_attn_mask_rep, sa_attn_mask], axis=-1)
+            positions_sa = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(sa_mask, axis=-1) - 1
+
+            (_, _), _, out_sa = self.PaliGemma.llm(
+                [None, sa_tokens],
+                mask=full_attn_mask_sa,
+                positions=positions_sa,
+                kv_cache=kv_cache,
+                adarms_cond=[None, sa_adarms],
+                return_attention_heads=True,
+                return_attention_probs=False,
+            )
+            heads_sa = out_sa.get("attention_heads")
+            if heads_sa is not None:
+                if return_state_and_first_action_heads and sa_tokens.shape[1] >= 2:
+                    state_heads = heads_sa[:, :, 0, :, :]
+                    first_action_heads = heads_sa[:, :, 1, :, :]
+                    attention_outputs["llm_state_first_action_activations"] = jnp.stack(
+                        [state_heads, first_action_heads], axis=2
+                    )[None, ...]  # [1, L, B, 2, Hflat, Hdim]
+                else:
+                    attention_outputs["llm_state_activations"] = heads_sa[None, ...]
+
+        if return_attention_heads or return_attention_probs or return_state_heads or return_state_and_first_action_heads:
             # @yusen: Return actions with attention collected during prefix prefill
             return x_0, attention_outputs
 

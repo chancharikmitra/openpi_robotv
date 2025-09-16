@@ -17,10 +17,10 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_green_cube_20.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 20
-USE_KEYFRAME = False
+USE_KEYFRAME = True
 # from tasks import Pick_training_tasks
 # from openpi.llm_instruction_verb_filter import instruction_matches_prompt
 LLM_PROMPT_KEY = "pick_place"
@@ -143,9 +143,9 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
         # 3) fallback: infer from group name
         lower = name.lower()
-        m = re.search(r"pick[-_ ]red[-_ ]cube", lower)
+        m = re.search(r"remove[-_ ]marker[-_ ]from[-_ ]mug", lower)
         if m:
-            return "pick red cube"
+            return "remove marker from mug"
         base = name.replace("-", " ").replace("_", " ")
         base = re.sub(r"\s+", " ", base).strip()
         return base
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "pick up green cube"
+            prompt_text = "remove marker from mug"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_robotv/pick_green_cube_20.h5"
+h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/remove_marker_from_mug_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
@@ -311,7 +311,14 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                         compression="gzip",
                     )
 
-                results = policy.infer(obs, return_attention_heads=True, return_attention_probs=True)
+                # Enable prefix (vision+language) heads and state-only/state+first-action heads
+                results = policy.infer(
+                    obs,
+                    return_attention_heads=True,
+                    return_attention_probs=True,
+                    return_state_heads=True,
+                    return_state_and_first_action_heads=True,
+                )
                 attention_outputs = results.get("attention_outputs")
                 grp = h5_out.require_group(grp_path)  # create hierarchy if needed
 
@@ -335,7 +342,7 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                     raise ValueError(f"Unexpected llm_activations shape: {full_attn.shape}")
                 # Force float32 (h5py does not support bfloat16; otherwise becomes raw bytes)
                 last_token_attn = np.asarray(last_token_attn, dtype=np.float32)
-                assert last_token_attn.shape == (18, 8, 256), f"last_token_attn.shape: {last_token_attn.shape}"
+                print("last_token_attn.shape:", last_token_attn.shape)
                 if "last_token_attn" in grp:
                     del grp["last_token_attn"]
                 grp.create_dataset(
@@ -343,6 +350,57 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                     data=last_token_attn,
                     compression="gzip",
                 )
+
+                # Optionally save state-only heads (vision+language+state, no actions)
+                state_attn = attention_outputs.get("llm_state_activations")
+                if state_attn is not None:
+                    # Drop leading singleton dims
+                    while state_attn.ndim > 5 and state_attn.shape[0] == 1:
+                        state_attn = state_attn[0]
+                    # Expected: [L, B, T_state(=1), H, D] or [B, T_state, H, D]
+                    if state_attn.ndim == 5:
+                        state_token_attn = state_attn[:, 0, 0, :, :]
+                    elif state_attn.ndim == 4:
+                        state_token_attn = state_attn[0, 0, :, :]
+                    else:
+                        raise ValueError(f"Unexpected llm_state_activations shape: {state_attn.shape}")
+                    state_token_attn = np.asarray(state_token_attn, dtype=np.float32)
+                    if "state_token_attn" in grp:
+                        del grp["state_token_attn"]
+                    print("state_token_attn.shape:", state_token_attn.shape)
+                    grp.create_dataset(
+                        "state_token_attn",
+                        data=state_token_attn,
+                        compression="gzip",
+                    )
+
+                # Optionally save (state + first action) heads
+                sa_attn = attention_outputs.get("llm_state_first_action_activations")
+                if sa_attn is not None:
+                    # Drop leading singleton dims
+                    while sa_attn.ndim > 5 and sa_attn.shape[0] == 1:
+                        sa_attn = sa_attn[0]
+                    # Expected: [L, B, 2, H, D] or [B, 2, H, D]
+                    if sa_attn.ndim == 5:
+                        state_token_attn2 = sa_attn[:, 0, 0, :, :]
+                        first_action_token_attn = sa_attn[:, 0, 1, :, :]
+                    elif sa_attn.ndim == 4:
+                        state_token_attn2 = sa_attn[0, 0, :, :]
+                        first_action_token_attn = sa_attn[0, 1, :, :]
+                    else:
+                        raise ValueError(f"Unexpected llm_state_first_action_activations shape: {sa_attn.shape}")
+
+                    # Save/overwrite state (from this combined path) and first action
+                    state_token_attn2 = np.asarray(state_token_attn2, dtype=np.float32)
+                    first_action_token_attn = np.asarray(first_action_token_attn, dtype=np.float32)
+
+                    if "state_token_attn" in grp:
+                        del grp["state_token_attn"]
+                    grp.create_dataset("state_token_attn", data=state_token_attn2, compression="gzip")
+
+                    if "first_action_token_attn" in grp:
+                        del grp["first_action_token_attn"]
+                    grp.create_dataset("first_action_token_attn", data=first_action_token_attn, compression="gzip")
 
                 # Optionally save prefill attention probabilities
                 # prefill_probs = attention_outputs.get("llm_attn_probs_prefill") #(18, 1, 8, 1018)
