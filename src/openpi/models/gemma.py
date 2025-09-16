@@ -161,7 +161,7 @@ class Attention(nn.Module):
     configs: Sequence[Config]
 
     @nn.compact
-    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False,return_action_expert_activations: bool = False, delta_heads=None):
+    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False, return_action_expert_activations: bool = False, delta_heads=None):
         # @yusen: Enable optional attention head/prob returns and support delta_heads steering
         # all experts must share the same head dim, num heads, and num kv heads for self-attention to work
         assert all(config.head_dim == self.configs[0].head_dim for config in self.configs)
