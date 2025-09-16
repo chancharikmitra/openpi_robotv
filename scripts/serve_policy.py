@@ -18,6 +18,9 @@ class EnvMode(enum.Enum):
     ALOHA_SIM = "aloha_sim"
     DROID = "droid"
     LIBERO = "libero"
+    DROID05 = "DROID05"
+    FAST="FAST"
+    NON_FAST = "NON_FAST"
 
 
 @dataclasses.dataclass
@@ -58,20 +61,32 @@ class Args:
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
     EnvMode.ALOHA: Checkpoint(
-        config="pi0_aloha",
-        dir="gs://openpi-assets/checkpoints/pi0_base",
+        config="pi05_aloha",
+        dir="gs://openpi-assets/checkpoints/pi05_base",
     ),
     EnvMode.ALOHA_SIM: Checkpoint(
         config="pi0_aloha_sim",
         dir="gs://openpi-assets/checkpoints/pi0_aloha_sim",
     ),
+    EnvMode.DROID05: Checkpoint(
+        config="pi05_droid",
+        dir="gs://openpi-assets/checkpoints/pi05_droid",
+    ),
     EnvMode.DROID: Checkpoint(
-        config="pi0_fast_droid",
-        dir="gs://openpi-assets/checkpoints/pi0_fast_droid",
+        config="pi0_droid",
+        dir="gs://openpi-assets/checkpoints/pi0_droid",
     ),
     EnvMode.LIBERO: Checkpoint(
-        config="pi0_fast_libero",
-        dir="gs://openpi-assets/checkpoints/pi0_fast_libero",
+        config="pi05_libero",
+        dir="gs://openpi-assets/checkpoints/pi05_libero",
+    ),
+    EnvMode.NON_FAST: Checkpoint(
+        config="pi0_droid_lerobot_finetune_green_cube",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.14_train/pi0_droid_lerobot_finetune_green_cube/debug_lerobot_all_heads_sanity_check_pick_green_cube_droid_joint_velocity_20/4999",
+    ),
+    EnvMode.FAST: Checkpoint(
+        config="pi0_fast_droid_lerobot_finetune_green_cube",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.14_train/pi0_fast_droid_lerobot_finetune_green_cube/debug_lerobot_all_heads_sanity_check_pick_green_cube_droid_joint_velocity_20/13000",
     ),
 }
 
