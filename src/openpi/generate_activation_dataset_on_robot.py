@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_cloth_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 20
 USE_KEYFRAME = True
@@ -143,9 +143,9 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
         # 3) fallback: infer from group name
         lower = name.lower()
-        m = re.search(r"wipe[-_ ]table[-_ ]with[-_ ]cloth", lower)
+        m = re.search(r"remove[-_ ]marker[-_ ]from[-_ ]mug", lower)
         if m:
-            return "wipe table with cloth"
+            return "remove marker from mug"
         base = name.replace("-", " ").replace("_", " ")
         base = re.sub(r"\s+", " ", base).strip()
         return base
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "wipe table with cloth"
+            prompt_text = "remove marker from mug"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/wipe_table_with_cloth_20.h5"
+h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/remove_marker_from_mug_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
