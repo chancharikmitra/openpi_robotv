@@ -64,7 +64,12 @@ class Policy(BasePolicy):
             # @yusen: mark attention-return flags as static to avoid TracerBoolConversionError under JIT
             self._sample_actions = nnx_utils.module_jit(
                 model.sample_actions,
-                static_argnames=("return_attention_heads", "return_attention_probs"),
+                static_argnames=(
+                    "return_attention_heads",
+                    "return_attention_probs",
+                    "return_state_heads",
+                    "return_state_and_first_action_heads",
+                ),
             )
             self._rng = rng or jax.random.key(0)
 
@@ -76,6 +81,8 @@ class Policy(BasePolicy):
         noise: np.ndarray | None = None,
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
+        return_state_heads: bool = False,
+        return_state_and_first_action_heads: bool = False,
     ) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
@@ -101,6 +108,8 @@ class Policy(BasePolicy):
         # @yusen: pass attention-return flags through to sample_actions
         sample_kwargs["return_attention_heads"] = return_attention_heads
         sample_kwargs["return_attention_probs"] = return_attention_probs
+        sample_kwargs["return_state_heads"] = return_state_heads
+        sample_kwargs["return_state_and_first_action_heads"] = return_state_and_first_action_heads
 
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()

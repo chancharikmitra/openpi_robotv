@@ -765,9 +765,9 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
     attention_list, action_list = [], []
     for frame_key in _iter_frame_keys(group):
         frame_group = group[frame_key]
-        if "last_token_attn" not in frame_group:
-            raise KeyError(f"{episode_key}/{frame_key} missing 'last_token_attn'")
-        attention = _coerce_float32(np.asarray(frame_group["last_token_attn"]))   # (18,8,256)
+        if "first_action_token_attn" not in frame_group:
+            raise KeyError(f"{episode_key}/{frame_key} missing 'first_action_token_attn'")
+        attention = _coerce_float32(np.asarray(frame_group["first_action_token_attn"]))   # (18,8,256)
 
         # 优先读取新结构中的 action_label (8,)
         if "action_label" in frame_group:
