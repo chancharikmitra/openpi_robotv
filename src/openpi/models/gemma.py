@@ -161,7 +161,7 @@ class Attention(nn.Module):
     configs: Sequence[Config]
 
     @nn.compact
-    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False, delta_heads=None):
+    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False,return_action_expert_activations: bool = False, delta_heads=None):
         # @yusen: Enable optional attention head/prob returns and support delta_heads steering
         # all experts must share the same head dim, num heads, and num kv heads for self-attention to work
         assert all(config.head_dim == self.configs[0].head_dim for config in self.configs)
@@ -254,6 +254,20 @@ class Attention(nn.Module):
             else:
                 out.append(None)
 
+        # Extract action expert activations if requested
+        action_expert_heads = None
+        if return_action_expert_activations:
+            # Find which tokens correspond to the action expert (non-None xs with index > 0)
+            action_expert_start = 0
+            for i, x in enumerate(xs):
+                if x is not None:
+                    if i > 0:  # Action expert is typically the second expert
+                        action_expert_end = action_expert_start + x.shape[1]
+                        # Extract the last token's representations for the action expert
+                        action_expert_heads = encoded[:, action_expert_end-1:action_expert_end, :, :]  # [B, 1, H]
+                        break
+                    action_expert_start += x.shape[1]
+
         attention_heads = encoded if return_attention_heads else None  # @yusen: Return per-head encoded vectors (not probabilities)
 
         if return_attention_probs:
@@ -263,8 +277,8 @@ class Attention(nn.Module):
         else:
             attention_probs = None
 
-        if return_attention_heads or return_attention_probs:
-            return out, (k, v), attention_heads, attention_probs
+        if return_attention_heads or return_attention_probs or return_action_expert_activations:
+            return out, (k, v), attention_heads, attention_probs, action_expert_heads
         else:
             return out, (k, v)
 
@@ -313,6 +327,7 @@ class Block(nn.Module):
     def __call__(self, xs, kv_cache, positions, attn_mask, adarms_cond, deterministic=True,  # noqa: FBT002
                  return_attention_heads: bool = False,
                  return_attention_probs: bool = False,
+                 return_action_expert_activations: bool = False,
                  delta_heads=None):  # noqa: FBT002
         # @yusen: Propagate attention-return flags and delta_heads through Block
         xs = sharding.activation_sharding_constraint(xs)
@@ -335,11 +350,12 @@ class Block(nn.Module):
             attn_mask,
             kv_cache,
             return_attention_heads=return_attention_heads,
-            return_attention_probs=return_attention_probs,
-            delta_heads=delta_heads,
+            return_attention_probs=return_attention_probs, 
+            return_action_expert_activations=return_action_expert_activations, 
+            delta_heads=delta_heads
         )
-        if return_attention_heads or return_attention_probs:
-            post_attn, kv_cache, attention_heads, attention_probs = attn_call
+        if return_attention_heads or return_attention_probs or return_action_expert_activations:
+            post_attn, kv_cache, attention_heads, attention_probs, action_expert_heads = attn_call
         else:
             post_attn, kv_cache = attn_call
         post_attn = jax.tree.map(lambda x: drop(x, deterministic), post_attn)
@@ -366,8 +382,8 @@ class Block(nn.Module):
         xs = [_gated_residual(x, y, gate) for x, y, gate in zip(xs, out, gates, strict=True)]
         xs = sharding.activation_sharding_constraint(xs)
 
-        if return_attention_heads or return_attention_probs:
-            return xs, (kv_cache, attention_heads, attention_probs)
+        if return_attention_heads or return_attention_probs or return_action_expert_activations:
+            return xs, (kv_cache, attention_heads, attention_probs, action_expert_heads)
         else:
             return xs, kv_cache
 
@@ -398,7 +414,7 @@ class Module(nn.Module):
         block_cls = nn.remat(
             Block,
             prevent_cse=False,
-            static_argnums=(6, 7, 8),  # @yusen: Mark attention-return flags as static for remat
+            static_argnums=(6, 7, 8, 9), # Chancharik: new boolean arg # @yusen: Mark attention-return flags as static for remat
             policy=jax.checkpoint_policies.nothing_saveable,
         )
         self.layers = nn.scan(
@@ -413,6 +429,7 @@ class Module(nn.Module):
                 nn.broadcast,
                 nn.broadcast,
                 nn.broadcast,
+                nn.broadcast, # Chancharik: Added an additional dimension for my new boolean arg.
                 0,
             ),  # @yusen: Extend scan in_axes to carry attention-return flags and delta_heads
             length=self.configs[0].depth,
@@ -440,6 +457,7 @@ class Module(nn.Module):
         deterministic: bool = True,
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
+        return_action_expert_activations: bool = False, 
         delta_heads=None,
     ) -> tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache] | tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache, dict]:
         # @yusen: Add attention-return flags and delta_heads at Module level; include aux dict in output
@@ -448,10 +466,10 @@ class Module(nn.Module):
         if adarms_cond is None:
             adarms_cond = [None] * len(self.configs)
 
-        activation_flag = return_attention_heads or return_attention_probs
+        activation_flag = return_attention_heads or return_attention_probs or return_action_expert_activations
 
         if activation_flag:
-            embedded, (kv_cache, attention_heads, attention_probs) = self.layers(
+            embedded, (kv_cache, attention_heads, attention_probs, action_expert_heads) = self.layers(
                 embedded,
                 kv_cache,
                 positions,
@@ -460,6 +478,7 @@ class Module(nn.Module):
                 deterministic,
                 return_attention_heads,
                 return_attention_probs,
+                return_action_expert_activations,
                 delta_heads,
             )
         else:
@@ -472,6 +491,7 @@ class Module(nn.Module):
                 deterministic,
                 return_attention_heads,
                 return_attention_probs,
+                return_action_expert_activations,
                 delta_heads,
             )
 
@@ -483,9 +503,11 @@ class Module(nn.Module):
         if activation_flag:
             out = {}
             if return_attention_heads:
-                out["attention_heads"] = attention_heads  # @yusen: Per-layer head encodings (K*G flattened)
+                out["attention_heads"] = attention_heads
             if return_attention_probs:
-                out["attention_probs"] = attention_probs  # @yusen: Per-layer attention probabilities (current query only)
+                out["attention_probs"] = attention_probs
+            if return_action_expert_activations:
+                out["action_expert_heads"] = action_expert_heads  # Add this
             return embedded_norm, kv_cache, out
         else:
             return embedded_norm, kv_cache

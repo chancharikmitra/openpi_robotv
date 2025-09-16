@@ -314,7 +314,6 @@ class Pi0FAST(_model.BaseModel):
             return (~all_eos) & (step < max_decoding_steps)
 
         # Use lax.while_loop so we can jit the full decoding loop.
-<<<<<<< HEAD
         _, output_tokens, _, _, final_step = jax.lax.while_loop(cond, step, (last_logit, output_tokens, kv_cache, False, 0))
         
         if return_attention_heads:
@@ -323,9 +322,3 @@ class Pi0FAST(_model.BaseModel):
             return output_tokens, attention_outputs, jnp.maximum(0, final_step - 1)
         else:
             return output_tokens
-=======
-        _, _, output_tokens, _, _, _ = jax.lax.while_loop(
-            cond, step, (rng, last_logit, output_tokens, kv_cache, False, 0)
-        )
-        return output_tokens
->>>>>>> clean_finetune
