@@ -339,18 +339,18 @@ def main():
     # Optional: set mode to "full" or "lora"
     mode = "lora"
     if mode == "lora":
-        config_name = "pi0_droid_lerobot_finetune_freeze_SIGLIP_ActionExpert"
-        exp_name = "debug_lerobot_all_heads_remove_marker_from_mug_20"
-        base_step = 250
-        tuned_step = 999
+        config_name = "KNN_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert"
+        exp_name = "debug_lerobot_KNN_heads_remove_marker_from_mug_20"
+        base_step = 1000
+        tuned_step = 4999
     # else:
     #     config_name = "pi0_fast_droid_h5_head_tune_debug"
     #     exp_name = "head_tune_debug_mask"
     #     base_step = 1
     #     tuned_step = 3
 
-    trainable_heads=[(11, 6), (3, 5), (15, 5), (2, 3), (1, 1), (16, 2), (1, 5), (13, 3),
-    (16, 4), (3, 1), (11, 4), (14, 1), (2, 0), (11, 0), (17, 3), (17, 5), (16, 0), (4, 0), (4, 7), (7, 1)] #KNN, K=10, state token for: place green cube in red bowl
+    trainable_heads=[(4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
+                (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)] #KNN, K=10, state token for: place green cube in red bowl
 
     untrained_head_to_check = (1, 2)
 

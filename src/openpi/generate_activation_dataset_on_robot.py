@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 20
 USE_KEYFRAME = True
@@ -102,7 +102,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
       - obs: (8,) float64 → first 7 are joint_position, last 1 is gripper_position
       - act_vel: (8,) float64 → [7 joint_velocity, 1 gripper_position]
       - act_pos: (8,) float64 → [7 joint_position, 1 gripper_position]
-      - rgb_left / rgb_right / rgb_wrist: (256,256,3) uint8
+      - rgb_right / rgb_wrist: (256,256,3) uint8
 
     Returns {task_name: {ep_idx: {observations, actions, action_dict_list}}}.
     task_name is inferred from the prompt (prefer attributes/datasets; fallback to group name).
@@ -145,7 +145,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
         lower = name.lower()
         m = re.search(r"place[-_ ]marker[-_ ]in[-_ ]mug", lower)
         if m:
-            return "remove marker from mug"
+            return "place green cube in red bowl"
         base = name.replace("-", " ").replace("_", " ")
         base = re.sub(r"\s+", " ", base).strip()
         return base
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "remove marker from mug"
+            prompt_text = "place green cube in red bowl"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -180,13 +180,13 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             for s in steps:
                 sg = grp[s]
-                req = all(k in sg for k in ("obs", "act_vel", "act_pos", "rgb_left", "rgb_wrist"))
+                req = all(k in sg for k in ("obs", "act_vel", "act_pos", "rgb_right", "rgb_wrist"))
                 if not req:
                     continue
                 obs = np.asarray(sg["obs"]).astype(np.float32)          # (8,)
                 act_vel = np.asarray(sg["act_vel"]).astype(np.float32)  # (8,)
                 act_pos = np.asarray(sg["act_pos"]).astype(np.float32)  # (8,)
-                img_left  = np.asarray(sg["rgb_left"])                  # (256,256,3)
+                img_left  = np.asarray(sg["rgb_right"])                  # (256,256,3)
                 img_wrist = np.asarray(sg["rgb_wrist"])                 # (256,256,3)
 
                 # Normalize dtypes/shapes for consistent stacking
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/remove_marker_from_mug_20.h5"
+h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/place_green_cube_in_red_bowl_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
@@ -320,6 +320,8 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                     return_state_and_first_action_heads=True,
                 )
                 attention_outputs = results.get("attention_outputs")
+                predicted_actions = results.get("actions")[0]
+                assert predicted_actions.shape == act.shape
                 grp = h5_out.require_group(grp_path)  # create hierarchy if needed
 
                 # Keep only last-token attention
@@ -426,6 +428,10 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                 if "action_label" in grp:
                     del grp["action_label"]
                 grp.create_dataset("action_label", data=action_arr, compression="gzip")
+                predicted_actions_arr = np.asarray(predicted_actions, dtype=np.float32)
+                if "predicted_action_label" in grp:
+                    del grp["predicted_action_label"]
+                grp.create_dataset("predicted_action_label", data=predicted_actions_arr, compression="gzip")
 
             # —— one episode done ——
             ep_counter += 1

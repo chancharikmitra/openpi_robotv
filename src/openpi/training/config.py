@@ -970,6 +970,50 @@ _CONFIGS = [
         ema_decay=None,
     ),
 
+    TrainConfig(
+        name="CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            trainable_head_indices=[
+                (2, 7), (13, 0), (6, 4), (2, 6), (5, 1), (10, 0), (12, 6), (12, 5), (9, 5), 
+                (10, 5), (0, 5), (7, 3), (3, 0), (7, 7), (11, 6), (7, 5), (10, 4), (9, 6), (6, 6), (7, 4)
+            ] #CMA, 50 frames, mean activation for: remove marker from mug
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
 
     TrainConfig(
         name="SAV_heads_pi0_droid_lerobot_finetune_green_cube",
