@@ -115,6 +115,8 @@ class AdamWForHeadTuning(OptimizerConfig):
     clip_gradient_norm: float = 1.0
     # List of (layer_index, head_index) tuples to train
     trainable_head_indices: list[tuple[int, int]] = dataclasses.field(default_factory=list)
+    # If True, completely freeze all KV (kv_einsum) parameters even in LoRA
+    freeze_kv: bool = False
 
     def create(
         self,
@@ -128,7 +130,12 @@ class AdamWForHeadTuning(OptimizerConfig):
         return optax.chain(optax.clip_by_global_norm(self.clip_gradient_norm), tx)
 
 
-def _create_head_tuning_mask(params: at.Params, trainable_heads: list[tuple[int, int]]) -> at.Params:
+def _create_head_tuning_mask(
+    params: at.Params,
+    trainable_heads: list[tuple[int, int]],
+    *,
+    freeze_kv: bool = False,
+) -> at.Params:
     """Creates a mask to freeze all but specific attention heads based on observed parameter paths."""
     trainable_heads_map = {}
     for layer, head in trainable_heads:
@@ -168,6 +175,9 @@ def _create_head_tuning_mask(params: at.Params, trainable_heads: list[tuple[int,
         if is_lora_weight:
             # For LoRA weights, head dimension is usually axis 1, but KV LoRA needs special handling
             if param_name in ["kv_einsum"]:
+                if freeze_kv:
+                    # Completely freeze KV LoRA
+                    return jnp.zeros_like(leaf, dtype=jnp.int8)
                 # KV LoRA shapes (Gemma): (layers, 2, num_kv_heads, in_dim, rank) or (layers, 2, num_kv_heads, rank, out_dim)
                 if leaf.ndim >= 3 and leaf.shape[2] > 1:
                     head_axis = 2  # multi-KV heads
@@ -184,6 +194,9 @@ def _create_head_tuning_mask(params: at.Params, trainable_heads: list[tuple[int,
                 # The head dimension is at axis 1
                 head_axis = 1
             elif param_name in ["kv_einsum"]:
+                if freeze_kv:
+                    # Completely freeze KV regular weights
+                    return jnp.zeros_like(leaf, dtype=jnp.int8)
                 # For Gemma, KV projection: (layers, 2, num_kv_heads, input_dim, output_dim)
                 # Gemma uses multi-query attention (num_kv_heads=1), so the practical shape is (layers, 2, 1, ...)
                 # In this case, we need special handling

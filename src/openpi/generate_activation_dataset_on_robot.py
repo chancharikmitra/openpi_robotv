@@ -143,7 +143,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
         # 3) fallback: infer from group name
         lower = name.lower()
-        m = re.search(r"remove[-_ ]marker[-_ ]from[-_ ]mug", lower)
+        m = re.search(r"place[-_ ]marker[-_ ]in[-_ ]mug", lower)
         if m:
             return "remove marker from mug"
         base = name.replace("-", " ").replace("_", " ")
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/remove_marker_from_mug_20.h5"
+h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/remove_marker_from_mug_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress

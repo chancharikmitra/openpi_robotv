@@ -725,7 +725,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_green_cube_20_uncentercropped",
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -739,6 +739,46 @@ _CONFIGS = [
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+
+
+    TrainConfig(
+        name="pi0_droid_lerobot_finetune_freeze_SIGLIP_ActionExpert",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
@@ -764,7 +804,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_green_cube_20",
+            repo_id="yusenluo9z/place_marker_in_mug_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -776,10 +816,20 @@ _CONFIGS = [
             # ),
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
+            # trainable_head_indices=[
+            #     (1, 1), (3, 7), (1, 4), (2, 7), (2, 0), (11, 0), (11, 4), (13, 1), (5, 7), (4, 7),
+            #     (11, 7), (5, 5), (2, 3), (6, 2), (11, 3), (5, 6), (1, 5), (4, 0), (1, 2), (17, 6), #KNN, K=10, state token for: pick up green cube
+            # ]
+            # trainable_head_indices=[(11, 6), (3, 5), (15, 5), (2, 3), (1, 1), (16, 2), (1, 5), (13, 3),
+            #  (16, 4), (3, 1), (11, 4), (14, 1), (2, 0), (11, 0), (17, 3), (17, 5), (16, 0), (4, 0), (4, 7), (7, 1)] #KNN, K=10, state token for: place green cube in red bowl
             trainable_head_indices=[
-                (1, 1), (3, 7), (1, 4), (2, 7), (2, 0), (11, 0), (11, 4), (13, 1), (5, 7), (4, 7),
-                (11, 7), (5, 5), (2, 3), (6, 2), (11, 3), (5, 6), (1, 5), (4, 0), (1, 2), (17, 6), #KNN, K=10, state token
-            ]
+                (1, 4), (11, 4), (4, 0), (11, 6), (13, 1), (11, 3), (3, 7), (11, 0), (2, 3), (16, 4), 
+                (17, 6), (14, 2), (17, 3), (11, 7), (12, 0), (2, 7), (16, 2), (1, 5), (11, 1), (12, 1)
+            ]  #KNN, K=20, state token for: place marker in mug
+            # trainable_head_indices=[
+            #     (5, 1), (2, 6), (12, 4), (10, 5), (1, 4), (9, 2), (4, 1), (5, 5), (0, 6), (2, 1),
+            #     (17, 3), (1, 5), (2, 3), (4, 3), (11, 3), (2, 0), (12, 1), (11, 5), (3, 2), (12, 3)
+            # ] #KNN, K=20, state token for: wipe table with yellow cloth
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
@@ -800,6 +850,127 @@ _CONFIGS = [
         ema_decay=None,
     ),
 
+
+    TrainConfig(
+        name="KNN_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            # trainable_head_indices=[
+            #     (1, 1), (3, 7), (1, 4), (2, 7), (2, 0), (11, 0), (11, 4), (13, 1), (5, 7), (4, 7),
+            #     (11, 7), (5, 5), (2, 3), (6, 2), (11, 3), (5, 6), (1, 5), (4, 0), (1, 2), (17, 6), #KNN, K=10, state token for: pick up green cube
+            # ]
+            # trainable_head_indices=[(11, 6), (3, 5), (15, 5), (2, 3), (1, 1), (16, 2), (1, 5), (13, 3),
+            #  (16, 4), (3, 1), (11, 4), (14, 1), (2, 0), (11, 0), (17, 3), (17, 5), (16, 0), (4, 0), (4, 7), (7, 1)] #KNN, K=10, state token for: place green cube in red bowl
+            # trainable_head_indices=[
+            #     (1, 4), (11, 4), (4, 0), (11, 6), (13, 1), (11, 3), (3, 7), (11, 0), (2, 3), (16, 4), 
+            #     (17, 6), (14, 2), (17, 3), (11, 7), (12, 0), (2, 7), (16, 2), (1, 5), (11, 1), (12, 1)
+            # ]  #KNN, K=20, state token for: place marker in mug
+            # trainable_head_indices=[
+            #     (5, 1), (2, 6), (12, 4), (10, 5), (1, 4), (9, 2), (4, 1), (5, 5), (0, 6), (2, 1),
+            #     (17, 3), (1, 5), (2, 3), (4, 3), (11, 3), (2, 0), (12, 1), (11, 5), (3, 2), (12, 3)
+            # ] #KNN, K=20, state token for: wipe table with yellow cloth
+            trainable_head_indices=[
+                (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
+                (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
+            ] #KNN, K=40, state token for: remove marker from mug
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+
+    TrainConfig(
+        name="KNN_heads_pi0_droid_lerobot_finetune_freeze_SIGLIP_ActionExpert",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=False,
+            # trainable_head_indices=[
+            #     (1, 1), (3, 7), (1, 4), (2, 7), (2, 0), (11, 0), (11, 4), (13, 1), (5, 7), (4, 7),
+            #     (11, 7), (5, 5), (2, 3), (6, 2), (11, 3), (5, 6), (1, 5), (4, 0), (1, 2), (17, 6), #KNN, K=10, state token for: pick up green cube
+            # ]
+            # trainable_head_indices=[(11, 6), (3, 5), (15, 5), (2, 3), (1, 1), (16, 2), (1, 5), (13, 3),
+            #  (16, 4), (3, 1), (11, 4), (14, 1), (2, 0), (11, 0), (17, 3), (17, 5), (16, 0), (4, 0), (4, 7), (7, 1)] #KNN, K=10, state token for: place green cube in red bowl
+            # trainable_head_indices=[
+            #     (1, 4), (11, 4), (4, 0), (11, 6), (13, 1), (11, 3), (3, 7), (11, 0), (2, 3), (16, 4), 
+            #     (17, 6), (14, 2), (17, 3), (11, 7), (12, 0), (2, 7), (16, 2), (1, 5), (11, 1), (12, 1)
+            # ]  #KNN, K=20, state token for: place marker in mug
+            # trainable_head_indices=[
+            #     (5, 1), (2, 6), (12, 4), (10, 5), (1, 4), (9, 2), (4, 1), (5, 5), (0, 6), (2, 1),
+            #     (17, 3), (1, 5), (2, 3), (4, 3), (11, 3), (2, 0), (12, 1), (11, 5), (3, 2), (12, 3)
+            # ] #KNN, K=20, state token for: wipe table with yellow cloth
+            trainable_head_indices=[
+                (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
+                (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
+            ] #KNN, K=40, state token for: remove marker from mug
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+
     TrainConfig(
         name="SAV_heads_pi0_droid_lerobot_finetune_green_cube",
         model=pi0_config.Pi0Config(
@@ -808,7 +979,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_green_cube_20",
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -822,7 +993,7 @@ _CONFIGS = [
         optimizer=_optimizer.AdamWForHeadTuning(
             trainable_head_indices=[
                 (7, 5), (1, 0), (1, 4), (1, 6), (1, 3), (9, 1), (3, 6), (10, 7), (3, 2), (4, 1),
-                (8, 0), (9, 5), (4, 5), (7, 6), (3, 7), (11, 3), (5, 5), (11, 2), (11, 6), (1, 7), # SAV margin
+                (8, 0), (9, 5), (4, 5), (7, 6), (3, 7), (11, 3), (5, 5), (11, 2), (11, 6), (1, 7), # SAV margin for pick up green cube
             ]
         ),
         freeze_filter=pi0_config.Pi0Config(

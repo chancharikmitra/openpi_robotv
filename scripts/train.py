@@ -64,7 +64,9 @@ def _create_masked_optimizer_for_head_tuning(
 
     # 3. Create mask only for trainable parameters
     mask_arrays = _optimizer._create_head_tuning_mask(
-        trainable_params, config.optimizer.trainable_head_indices
+        trainable_params,
+        config.optimizer.trainable_head_indices,
+        freeze_kv=getattr(config.optimizer, "freeze_kv", False),
     )
     logging.info(
         f"Generated mask has {len(mask_arrays)} top-level keys: {list(mask_arrays.keys())}"
@@ -206,11 +208,11 @@ def train_step(
     # Branch: head-based tuning uses pure-dict optax flow with masking
     if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
         # Optional debug of optimizer state structure at first step
-        jax.lax.cond(
-            state.step == 0,
-            lambda: jax.debug.print("Optimizer state structure: {opt_state}", opt_state=state.opt_state),
-            lambda: None,
-        )
+        # jax.lax.cond(
+        #     state.step == 0,
+        #     lambda: jax.debug.print("Optimizer state structure: {opt_state}", opt_state=state.opt_state),
+        #     lambda: None,
+        # )
 
         params_trainable = state.params.filter(config.trainable_filter)
         grads_dict = grads.to_pure_dict()

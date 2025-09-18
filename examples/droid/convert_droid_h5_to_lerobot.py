@@ -62,17 +62,17 @@ def main(
         features={
             "exterior_image_1_left": {
                 "dtype": "image",
-                "shape": (720, 1280, 3),
+                "shape": (256, 256, 3),
                 "names": ["height", "width", "channel"],
             },
             "exterior_image_2_left": {
                 "dtype": "image",
-                "shape": (720, 1280, 3),
+                "shape": (256, 256, 3),
                 "names": ["height", "width", "channel"],
             },
             "wrist_image_left": {
                 "dtype": "image",
-                "shape": (720, 1280, 3),
+                "shape": (256, 256, 3),
                 "names": ["height", "width", "channel"],
             },
             "joint_position": {

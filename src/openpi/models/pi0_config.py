@@ -106,3 +106,30 @@ class Pi0Config(_model.BaseModelConfig):
         if not filters:
             return nnx.Nothing
         return nnx.All(*filters)
+
+    def get_freeze_filter_always_freeze_expert_and_siglip(self) -> nnx.filterlib.Filter:
+        """Freeze Action Expert and SIGLIP always; main LLM keep original LoRA logic.
+        - Always freeze Action Expert branch (including its LoRA) and SIGLIP branch;
+        - If paligemma uses LoRA, freeze main LLM branch (exclude expert path), but exempt main LLM's LoRA;
+        - Do not exempt Action Expert's LoRA (i.e. freeze Expert overall).
+        """
+        expert = nnx_utils.PathRegex(".*llm.*_1.*")
+        siglip = nnx_utils.PathRegex(".*img.*")
+        main_llm = nnx_utils.PathRegex(".*llm.*")
+        lora = nnx_utils.PathRegex(".*lora.*")
+
+        branches: list[nnx.filterlib.Filter] = [expert, siglip]
+
+        # Only exempt main LLM LoRA (expert still overall frozen)
+        if "lora" in self.paligemma_variant:
+            branches.append(
+                nnx.All(
+                    main_llm,
+                    nnx.Not(expert),   # exclude Expert branch
+                    nnx.Not(lora),     # exempt main LLM's LoRA
+                )
+            )
+
+        # If only Expert has LoRA, still freeze expert overall (including its LoRA), no extra processing needed
+
+        return nnx.Any(*branches)
