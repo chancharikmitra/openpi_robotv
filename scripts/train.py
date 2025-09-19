@@ -67,6 +67,7 @@ def _create_masked_optimizer_for_head_tuning(
         trainable_params,
         config.optimizer.trainable_head_indices,
         freeze_kv=getattr(config.optimizer, "freeze_kv", False),
+        only_attention=getattr(config.optimizer, "only_attention", False),
     )
     logging.info(
         f"Generated mask has {len(mask_arrays)} top-level keys: {list(mask_arrays.keys())}"

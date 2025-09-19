@@ -117,6 +117,8 @@ class AdamWForHeadTuning(OptimizerConfig):
     trainable_head_indices: list[tuple[int, int]] = dataclasses.field(default_factory=list)
     # If True, completely freeze all KV (kv_einsum) parameters even in LoRA
     freeze_kv: bool = False
+    # If True, strictly restrict updates to attention weights only (non-attention weights fully masked to 0)
+    only_attention: bool = True
 
     def create(
         self,
@@ -135,6 +137,7 @@ def _create_head_tuning_mask(
     trainable_heads: list[tuple[int, int]],
     *,
     freeze_kv: bool = False,
+    only_attention: bool = True,
 ) -> at.Params:
     """Creates a mask to freeze all but specific attention heads based on observed parameter paths."""
     trainable_heads_map = {}
@@ -164,7 +167,9 @@ def _create_head_tuning_mask(
         
         # Only process attention weights (regular or LoRA)
         if not (is_attn_weight and (is_regular_weight or is_lora_weight)):
-            return jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1
+            # Head-based tuning通常期望“仅注意力”，因此将非注意力权重置0以避免其主导训练
+            return (jnp.zeros_like(leaf, dtype=jnp.int8) if only_attention else
+                    (jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1))
 
         layer_dim = leaf.shape[0]
         

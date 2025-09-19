@@ -307,6 +307,33 @@ def _verify_lora(params_base: dict, params_tuned: dict, trainable_heads: list[tu
     return all_ok
 
 
+def _verify_non_attention_modules(params_base: dict, params_tuned: dict) -> bool:
+    """Check whether non-attention projection/MLP modules changed.
+
+    This verifies top-level modules outside PaliGemma LLM tree:
+      - action_in_proj, action_out_proj, action_time_mlp_in, action_time_mlp_out, state_proj
+    Expectation for strict head-only runs (only_attention=True): they should remain unchanged.
+    """
+    print("\n=== Subtree change check: Non-attention modules ===")
+    modules = [
+        "action_in_proj",
+        "action_out_proj",
+        "action_time_mlp_in",
+        "action_time_mlp_out",
+        "state_proj",
+    ]
+
+    all_ok = True
+    for name in modules:
+        base_sub = _get_subtree(params_base, name)
+        tuned_sub = _get_subtree(params_tuned, name)
+        diff = _max_abs_diff_subtree(base_sub, tuned_sub)
+        print(f"{name} max|Δ|: {diff:.6e}")
+        if diff > CHANGE_DIFF_THRESH:
+            print(f"  [WARN] {name} changed (>{CHANGE_DIFF_THRESH:.1e})")
+            all_ok = False
+    return all_ok
+
 def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
     """Check whether SIGLIP (img) and Action Expert (llm_1) changed."""
     print("\n=== Subtree change check: SIGLIP and Action Expert ===")
@@ -366,8 +393,9 @@ def main():
 
     if mode == "lora":
         ok_lora = _verify_lora(params_base, params_tuned, trainable_heads, untrained_head_to_check)
-        ok_subtrees = _verify_siglip_and_expert(params_base, params_tuned)
-        ok = ok_lora and ok_subtrees
+        ok_sigexp = _verify_siglip_and_expert(params_base, params_tuned)
+        ok_nonattn = _verify_non_attention_modules(params_base, params_tuned)
+        ok = ok_lora and ok_sigexp and ok_nonattn
     else:
         ok = _verify_full(params_base, params_tuned, trainable_heads, untrained_head_to_check)
 
