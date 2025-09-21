@@ -118,7 +118,11 @@ class AdamWForHeadTuning(OptimizerConfig):
     # If True, completely freeze all KV (kv_einsum) parameters even in LoRA
     freeze_kv: bool = False
     # If True, strictly restrict updates to attention weights only (non-attention weights fully masked to 0)
-    only_attention: bool = True
+    only_attention: bool = False
+    # If True, additionally freeze only the MLP (FFN) submodules under main LLM
+    # while allowing other non-attention modules (proj, norm, etc.) to train.
+    # Effective only when only_attention is False.
+    freeze_mlp: bool = False
 
     def create(
         self,
@@ -138,6 +142,7 @@ def _create_head_tuning_mask(
     *,
     freeze_kv: bool = False,
     only_attention: bool = True,
+    freeze_mlp: bool = False,
 ) -> at.Params:
     """Creates a mask to freeze all but specific attention heads based on observed parameter paths."""
     trainable_heads_map = {}
@@ -167,9 +172,17 @@ def _create_head_tuning_mask(
         
         # Only process attention weights (regular or LoRA)
         if not (is_attn_weight and (is_regular_weight or is_lora_weight)):
-            # Head-based tuning通常期望“仅注意力”，因此将非注意力权重置0以避免其主导训练
-            return (jnp.zeros_like(leaf, dtype=jnp.int8) if only_attention else
-                    (jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1))
+            # 非注意力权重：
+            if only_attention:
+                return jnp.zeros_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 0
+            if freeze_mlp:
+                is_mlp_node = (
+                    "PaliGemma/llm/layers/mlp" in actual_path or
+                    "PaliGemma/llm/layers/mlp_1" in actual_path
+                )
+                return (jnp.zeros_like(leaf, dtype=jnp.int8) if is_mlp_node else
+                        (jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1))
+            return jnp.ones_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 1
 
         layer_dim = leaf.shape[0]
         

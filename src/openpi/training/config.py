@@ -930,7 +930,8 @@ _CONFIGS = [
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
             freeze_kv=True,
-            only_attention=True,
+            only_attention=False,
+            freeze_mlp=True,
             trainable_head_indices=[
                 (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
                 (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
@@ -950,8 +951,8 @@ _CONFIGS = [
         batch_size=32,
         num_workers=8,
         log_interval=100,
-        save_interval=1000,
-        keep_period=1000,
+        save_interval=2500,
+        keep_period=2500,
         ema_decay=None,
     ),
 
@@ -1067,6 +1068,54 @@ _CONFIGS = [
         ema_decay=None,
     ),
 
+
+    TrainConfig(
+        name="CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=True,
+            trainable_head_indices=[
+                (0, 5), (5, 1), (7, 6), (10, 5), (6, 0), (0, 6), (6, 6), (3, 7), (6, 2), (1, 0),
+                (15, 1), (2, 1), (11, 2), (7, 3), (11, 4), (17, 5), (10, 1), (3, 0), (0, 3), (12, 4)
+            ] #CMA, 300 frames, mean activation for: other tasks
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=2500,
+        keep_period=2500,
+        ema_decay=None,
+    ),
+
     TrainConfig(
         name="Sanity_check_first_20_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
         model=pi0_config.Pi0Config(
@@ -1088,7 +1137,8 @@ _CONFIGS = [
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
             freeze_kv=True,
-            only_attention=True,
+            only_attention=False,
+            freeze_mlp=True,
             trainable_head_indices=[
                 (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (1, 0), (1, 1), (1, 2),
                 (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (2, 0), (2, 1), (2, 2), (2, 3), (0, 0),
@@ -1108,8 +1158,8 @@ _CONFIGS = [
         batch_size=32,
         num_workers=8,
         log_interval=100,
-        save_interval=1000,
-        keep_period=1000,
+        save_interval=2500,
+        keep_period=2500,
         ema_decay=None,
     ),
 

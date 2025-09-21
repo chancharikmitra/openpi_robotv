@@ -61,7 +61,7 @@ def _get_subtree(params: dict, path: str) -> dict | None:
             node = node[k]
         return node
     except Exception:
-        return None
+        print(f"Failed to get subtree for path: {path}")
 
 
 def _max_abs_diff_subtree(a, b) -> float:
@@ -335,7 +335,11 @@ def _verify_non_attention_modules(params_base: dict, params_tuned: dict) -> bool
     return all_ok
 
 def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
-    """Check whether SIGLIP (img) and Action Expert (llm_1) changed."""
+    """Check whether SIGLIP (img) and Action Expert (_1-suffixed modules) changed.
+
+    Note: In this model, expert modules live under PaliGemma/llm with suffix `_1`,
+    e.g., attn_vec_einsum_1, q_einsum_1, kv_einsum_1, mlp_1, pre_*_1.
+    """
     print("\n=== Subtree change check: SIGLIP and Action Expert ===")
     all_ok = True
 
@@ -345,11 +349,29 @@ def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
     siglip_diff = _max_abs_diff_subtree(base_siglip, tuned_siglip)
     print(f"SIGLIP max|Δ|: {siglip_diff:.6e}")
 
-    # Expert branch (llm_1)
-    base_expert = _get_subtree(params_base, "PaliGemma/llm_1")
-    tuned_expert = _get_subtree(params_tuned, "PaliGemma/llm_1")
-    expert_diff = _max_abs_diff_subtree(base_expert, tuned_expert)
-    print(f"ActionExpert max|Δ|: {expert_diff:.6e}")
+    # Expert branch aggregated by _1 suffix under PaliGemma/llm
+    def _collect_llm_suffix_1(tree: dict) -> dict:
+        if tree is None:
+            return {}
+        llm = tree.get("PaliGemma", {}).get("llm", {}) if "PaliGemma" in tree else tree.get("llm", {})
+        result = {}
+        def _walk(node, prefix=""):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    new_prefix = f"{prefix}/{k}" if prefix else k
+                    if isinstance(k, str) and k.endswith("_1"):
+                        result[new_prefix] = v
+                    _walk(v, new_prefix)
+        _walk(llm)
+        return result
+
+    base_expert_map = _collect_llm_suffix_1(params_base)
+    tuned_expert_map = _collect_llm_suffix_1(params_tuned)
+    common_keys = set(base_expert_map.keys()) & set(tuned_expert_map.keys())
+    expert_diff = 0.0
+    for k in sorted(common_keys):
+        expert_diff = max(expert_diff, _max_abs_diff_subtree(base_expert_map[k], tuned_expert_map[k]))
+    print(f"ActionExpert(max over *_1) max|Δ|: {expert_diff:.6e}")
 
     # Expectation under freeze: both should remain unchanged
     if siglip_diff > CHANGE_DIFF_THRESH:
@@ -360,6 +382,22 @@ def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
         all_ok = False
 
     return all_ok
+
+def _verify_mlp_parts(params_base: dict, params_tuned: dict) -> bool:
+    """Report max|Δ| for MLP (FFN) parts under main LLM: mlp and mlp_1."""
+    print("\n=== Subtree change check: LLM MLP parts (mlp, mlp_1) ===")
+    base_mlp = _get_subtree(params_base, "PaliGemma/llm/layers/mlp")
+    tuned_mlp = _get_subtree(params_tuned, "PaliGemma/llm/layers/mlp")
+    diff_mlp = _max_abs_diff_subtree(base_mlp, tuned_mlp)
+    print(f"mlp max|Δ|: {diff_mlp:.6e}")
+
+    base_mlp1 = _get_subtree(params_base, "PaliGemma/llm/layers/mlp_1")
+    tuned_mlp1 = _get_subtree(params_tuned, "PaliGemma/llm/layers/mlp_1")
+    diff_mlp1 = _max_abs_diff_subtree(base_mlp1, tuned_mlp1)
+    print(f"mlp_1 max|Δ|: {diff_mlp1:.6e}")
+
+    # Not gating overall success here as expectation (freeze vs train) depends on config.
+    return True
 
 def main():
     # --- Configuration ---
@@ -395,7 +433,8 @@ def main():
         ok_lora = _verify_lora(params_base, params_tuned, trainable_heads, untrained_head_to_check)
         ok_sigexp = _verify_siglip_and_expert(params_base, params_tuned)
         ok_nonattn = _verify_non_attention_modules(params_base, params_tuned)
-        ok = ok_lora and ok_sigexp and ok_nonattn
+        ok_mlp = _verify_mlp_parts(params_base, params_tuned)
+        ok = ok_lora and ok_sigexp and ok_nonattn and ok_mlp
     else:
         ok = _verify_full(params_base, params_tuned, trainable_heads, untrained_head_to_check)
 
