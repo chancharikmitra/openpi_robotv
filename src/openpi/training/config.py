@@ -718,14 +718,14 @@ _CONFIGS = [
     ),
     
     TrainConfig(
-        name="pi0_droid_lerobot_finetune_green_cube",
+        name="pi0_droid_lerobot_finetune",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            repo_id="yusenluo9z/place_marker_in_mug_200",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -743,10 +743,10 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=10000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=10000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
@@ -910,14 +910,14 @@ _CONFIGS = [
     ),
 
     TrainConfig(
-        name="KNN_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+        name="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            repo_id="yusenluo9z/press_the_button_hard_50",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -932,10 +932,18 @@ _CONFIGS = [
             freeze_kv=True,
             only_attention=False,
             freeze_mlp=True,
+            # trainable_head_indices=[
+            #     (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
+            #     (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
+            # ] #KNN, K=40, state token for: remove marker from mug
+            # trainable_head_indices=[
+            #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
+            #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
+            # ] #KNN, K=40, state token for: place marker in mug  200
             trainable_head_indices=[
-                (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
-                (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
-            ] #KNN, K=40, state token for: remove marker from mug
+                (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
+                (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
+            ] #KNN, K=40, state token for: press the button hard  50
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
@@ -951,8 +959,8 @@ _CONFIGS = [
         batch_size=32,
         num_workers=8,
         log_interval=100,
-        save_interval=2500,
-        keep_period=2500,
+        save_interval=1000,
+        keep_period=1000,
         ema_decay=None,
     ),
 
