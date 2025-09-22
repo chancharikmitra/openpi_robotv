@@ -718,7 +718,7 @@ _CONFIGS = [
     ),
     
     TrainConfig(
-        name="pi0_droid_lerobot_finetune",
+        name="All_heads_LoRA",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
@@ -743,10 +743,10 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=10000,
+            decay_steps=5000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=10000,
+        num_train_steps=5000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
