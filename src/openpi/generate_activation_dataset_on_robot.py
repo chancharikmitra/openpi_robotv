@@ -17,9 +17,9 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_yellow_cloth_20_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_press_the_button_hard_50_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
-MAX_EPISODES = 20
+MAX_EPISODES = 200
 USE_KEYFRAME = True
 # from tasks import Pick_training_tasks
 # from openpi.llm_instruction_verb_filter import instruction_matches_prompt
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "wipe table with yellow cloth"
+            prompt_text = "press the button hard"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/wipe_table_with_yellow_cloth_20.h5"
+h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/press_the_button_hard_50.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress

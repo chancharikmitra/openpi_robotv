@@ -797,14 +797,14 @@ _CONFIGS = [
 
 
     TrainConfig(
-        name="KNN_heads_pi0_droid_lerobot_finetune_green_cube",
+        name="KNN_heads_robo_steering_freeze_SIGLIP_ActionExpert",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20",
+            repo_id="yusenluo9z/place_marker_in_mug_200",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -816,24 +816,31 @@ _CONFIGS = [
             # ),
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=False,
+            only_attention=False,
+            freeze_mlp=False,
             # trainable_head_indices=[
             #     (1, 1), (3, 7), (1, 4), (2, 7), (2, 0), (11, 0), (11, 4), (13, 1), (5, 7), (4, 7),
             #     (11, 7), (5, 5), (2, 3), (6, 2), (11, 3), (5, 6), (1, 5), (4, 0), (1, 2), (17, 6), #KNN, K=10, state token for: pick up green cube
             # ]
             # trainable_head_indices=[(11, 6), (3, 5), (15, 5), (2, 3), (1, 1), (16, 2), (1, 5), (13, 3),
             #  (16, 4), (3, 1), (11, 4), (14, 1), (2, 0), (11, 0), (17, 3), (17, 5), (16, 0), (4, 0), (4, 7), (7, 1)] #KNN, K=10, state token for: place green cube in red bowl
-            trainable_head_indices=[
-                (1, 4), (11, 4), (4, 0), (11, 6), (13, 1), (11, 3), (3, 7), (11, 0), (2, 3), (16, 4), 
-                (17, 6), (14, 2), (17, 3), (11, 7), (12, 0), (2, 7), (16, 2), (1, 5), (11, 1), (12, 1)
-            ]  #KNN, K=20, state token for: place marker in mug
+            # trainable_head_indices=[
+            #     (1, 4), (11, 4), (4, 0), (11, 6), (13, 1), (11, 3), (3, 7), (11, 0), (2, 3), (16, 4), 
+            #     (17, 6), (14, 2), (17, 3), (11, 7), (12, 0), (2, 7), (16, 2), (1, 5), (11, 1), (12, 1)
+            # ]  #KNN, K=20, state token for: place marker in mug 20
             # trainable_head_indices=[
             #     (5, 1), (2, 6), (12, 4), (10, 5), (1, 4), (9, 2), (4, 1), (5, 5), (0, 6), (2, 1),
             #     (17, 3), (1, 5), (2, 3), (4, 3), (11, 3), (2, 0), (12, 1), (11, 5), (3, 2), (12, 3)
             # ] #KNN, K=20, state token for: wipe table with yellow cloth
+            trainable_head_indices=[
+                (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
+                (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
+            ] #KNN, K=40, state token for: place marker in mug  200
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
-        ).get_freeze_filter(),
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
@@ -852,14 +859,14 @@ _CONFIGS = [
 
 
     TrainConfig(
-        name="KNN_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert",
+        name="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_green_cube_20",
+            repo_id="yusenluo9z/press_the_button_hard_50",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -872,6 +879,8 @@ _CONFIGS = [
         ),
         optimizer=_optimizer.AdamWForHeadTuning(
             freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=True,
             # trainable_head_indices=[ (3, 7), (1, 1), (2, 7), (1, 2), (1, 4), (2, 0), (11, 4), (4, 7), (1, 5),
             #  (5, 7), (4, 0), (11, 0), (5, 6), (3, 2), (10, 4), (13, 1), (7, 5), (13, 0), (11, 7), (2, 3) #KNN, K=30, state token for: pick up green cube
             # ]
@@ -885,10 +894,18 @@ _CONFIGS = [
             #     (5, 1), (2, 6), (12, 4), (10, 5), (1, 4), (9, 2), (4, 1), (5, 5), (0, 6), (2, 1),
             #     (17, 3), (1, 5), (2, 3), (4, 3), (11, 3), (2, 0), (12, 1), (11, 5), (3, 2), (12, 3)
             # ] #KNN, K=20, state token for: wipe table with yellow cloth
+            # trainable_head_indices=[
+            #     (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
+            #     (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
+            # ] #KNN, K=40, state token for: remove marker from mug
+            # trainable_head_indices=[
+            #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
+            #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
+            # ] #KNN, K=40, state token for: place marker in mug  200
             trainable_head_indices=[
-                (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
-                (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
-            ] #KNN, K=40, state token for: remove marker from mug
+                (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
+                (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
+            ] #KNN, K=40, state token for: press the button hard  50
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
@@ -917,7 +934,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/press_the_button_hard_50",
+            repo_id="yusenluo9z/place_marker_in_mug_200",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -936,14 +953,14 @@ _CONFIGS = [
             #     (4, 0), (3, 7), (11, 4), (11, 6), (11, 0), (2, 3), (1, 1), (16, 1), (2, 7), (16, 4), 
             #     (16, 0), (16, 5), (16, 7), (11, 3), (14, 2), (1, 4), (16, 2), (14, 1), (1, 5), (11, 7)
             # ] #KNN, K=40, state token for: remove marker from mug
-            # trainable_head_indices=[
-            #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
-            #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
-            # ] #KNN, K=40, state token for: place marker in mug  200
             trainable_head_indices=[
-                (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
-                (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
-            ] #KNN, K=40, state token for: press the button hard  50
+                (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
+                (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
+            ] #KNN, K=40, state token for: place marker in mug  200
+            # trainable_head_indices=[
+            #     (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
+            #     (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
+            # ] #KNN, K=40, state token for: press the button hard  50
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
