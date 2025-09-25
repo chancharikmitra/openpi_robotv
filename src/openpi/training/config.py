@@ -763,7 +763,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_red_mug_20",
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -970,7 +970,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_red_mug_20",
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1316,7 +1316,7 @@ TrainConfig(
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            repo_id="yusenluo9z/place_marker_in_mug_200",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1330,11 +1330,33 @@ TrainConfig(
         optimizer=_optimizer.AdamWForHeadTuning(
             freeze_kv=True,
             only_attention=False,
-            freeze_mlp=True,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (0, 5), (5, 1), (7, 6), (10, 5), (6, 0), (0, 6), (6, 6), (3, 7), (6, 2), (1, 0),
+            #     (15, 1), (2, 1), (11, 2), (7, 3), (11, 4), (17, 5), (10, 1), (3, 0), (0, 3), (12, 4)
+            # ] #CMA, 300 frames, remove marker from mug mean activation for: other tasks
             trainable_head_indices=[
-                (0, 5), (5, 1), (7, 6), (10, 5), (6, 0), (0, 6), (6, 6), (3, 7), (6, 2), (1, 0),
-                (15, 1), (2, 1), (11, 2), (7, 3), (11, 4), (17, 5), (10, 1), (3, 0), (0, 3), (12, 4)
-            ] #CMA, 300 frames, mean activation for: other tasks
+                (14, 3),  # Rank 1
+                (0, 5),  # Rank 2
+                (17, 6),  # Rank 3
+                (5, 1),  # Rank 4
+                (12, 6),  # Rank 5
+                (8, 1),  # Rank 6
+                (17, 3),  # Rank 7
+                (8, 5),  # Rank 8
+                (1, 3),  # Rank 9
+                (16, 1),  # Rank 10
+                (16, 6),  # Rank 11
+                (0, 4),  # Rank 12
+                (0, 3),  # Rank 13
+                (1, 5),  # Rank 14
+                (10, 3),  # Rank 15
+                (12, 7),  # Rank 16
+                (13, 5),  # Rank 17
+                (13, 6),  # Rank 18
+                (9, 2),  # Rank 19
+                (9, 1)  # Rank 20
+            ] #CMA, 300 frames, place marker in mug mean activation for: other tasks
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
@@ -1350,8 +1372,50 @@ TrainConfig(
         batch_size=32,
         num_workers=8,
         log_interval=100,
-        save_interval=2500,
-        keep_period=2500,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
+        name="REINFORCE_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_marker_in_mug_200",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            trainable_head_indices=[
+               (2, 2), (5, 1), (8, 1), (17, 6), (14, 3), (2, 0), (11, 2), (17, 3), (6, 4), (0, 3), (4, 1), 
+               (0, 5), (17, 1), (3, 4), (15, 4), (8, 4), (1, 6), (3, 1), (10, 7), (0, 2)
+            ] 
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
         ema_decay=None,
     ),
 
