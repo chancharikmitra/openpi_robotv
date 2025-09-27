@@ -777,7 +777,7 @@ _CONFIGS = [
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/All_heads_LoRA/debug_lerobot_all_heads_place_marker_in_mug_200/4999/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
@@ -1420,14 +1420,14 @@ TrainConfig(
     ),
 
     TrainConfig(
-        name="Sanity_check_first_20_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+        name="Sanity_check_first_20_heads_freeze_KV_SIGLIP_ActionExpert_MLP",
         model=pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/remove_marker_from_mug_20",
+            repo_id="yusenluo9z/place_marker_in_mug_200",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1461,8 +1461,8 @@ TrainConfig(
         batch_size=32,
         num_workers=8,
         log_interval=100,
-        save_interval=2500,
-        keep_period=2500,
+        save_interval=1000,
+        keep_period=1000,
         ema_decay=None,
     ),
 
