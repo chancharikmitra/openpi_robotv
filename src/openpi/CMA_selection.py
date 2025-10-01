@@ -452,19 +452,19 @@ def build_baseline_h5_from_multiple(
 
 # Example usage
 if __name__ == "__main__":
-    import openpi.training.config as config
-    from openpi.shared import download
-    from openpi.policies import policy_config
-    # Paths to your data
+    # import openpi.training.config as config
+    # from openpi.shared import download
+    # from openpi.policies import policy_config
+    # # Paths to your data
     
-    TASK_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_marker_in_mug_20_state_first_action.h5"
-    config = config.get_config("pi0_droid")
-    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
-    # Ensure normalization assets are present (includes droid/norm_stats.json)
-    download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
+    # TASK_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_marker_in_mug_20_state_first_action.h5"
+    # config = config.get_config("pi0_droid")
+    # checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
+    # # Ensure normalization assets are present (includes droid/norm_stats.json)
+    # download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
 
-    # Create a trained policy.
-    policy = policy_config.create_trained_policy(config, checkpoint_dir)
+    # # Create a trained policy.
+    # policy = policy_config.create_trained_policy(config, checkpoint_dir)
     # Run CMA head selection
     # selected_heads = causal_mediation_head_selection(
     #     baseline_attn_h5=BASELINE_ATTN_H5,
@@ -480,19 +480,21 @@ if __name__ == "__main__":
         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_cloth_20_state_first_action.h5",
         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_yellow_cloth_20_state_first_action.h5",
         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5",
+        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_press_the_button_hard_50_state_first_action.h5",
+        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_push_red_bowl_to_red_cup_50_state_first_action.h5",
     ],
-    "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state.h5",
+    "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state_place_marker_in_mug_200.h5",
     )
-    BASELINE_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state.h5"
-    selected_heads = causal_mediation_head_selection(
-    baseline_attn_h5=BASELINE_ATTN_H5,
-    task_attn_h5=TASK_ATTN_H5,
-    policy=policy,                            # 已创建好的 policy
-    raw_h5_path="/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/place_marker_in_mug_20.h5",    # 就是 generate_activation 使用的原始 h5
-    prompt_text="place marker in mug",     # 与生成时一致
-    delta_token_index=0,                      # 注入 state
-    num_heads=20,                          # 可选限量
-    max_frames=300,
-    )
+    # BASELINE_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state_place_marker_in_mug_200.h5"
+    # selected_heads = causal_mediation_head_selection(
+    # baseline_attn_h5=BASELINE_ATTN_H5,
+    # task_attn_h5=TASK_ATTN_H5,
+    # policy=policy,                            # 已创建好的 policy
+    # raw_h5_path="/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/place_marker_in_mug_200.h5",    # 就是 generate_activation 使用的原始 h5
+    # prompt_text="place marker in mug",     # 与生成时一致
+    # delta_token_index=0,                      # 注入 state
+    # num_heads=20,                          # 可选限量
+    # max_frames=300,
+    # )
     
-    print(f"\nSelected heads: {selected_heads}")
+    # print(f"\nSelected heads: {selected_heads}")

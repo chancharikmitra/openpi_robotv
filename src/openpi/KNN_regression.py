@@ -4,7 +4,7 @@
 
 import h5py, random, math
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Iterable, Optional
+from typing import List, Tuple, Dict, Iterable, Optional, Set
 import numpy as np
 from tqdm import tqdm
 from sklearn.decomposition import PCA
@@ -34,13 +34,65 @@ PLS_COMPONENTS = 32      # upper bound for PLS components
 USE_PCA      = False
 USE_ZSCORE   = False             # per-head z-score normalization
 PCA_D        = 32                # per-head PCA dim; disable by setting USE_PCA=False
-DIST_METRIC  = "cosine"         # "cosine" | "euclidean" | "whiten" | "proj" | "pls"
+DIST_METRIC  = "euclidean"         # "cosine" | "euclidean" | "whiten" | "proj" | "pls"
 K_GRID       = [10,20,30,40]        # candidate k for KNN
 TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 
 # ---- Head selection mode and target ----
 HEAD_SELECTION_MODE = "topk"      # "topk" | "best_add" | "reinforce" | "learn_weights"
 TARGET_HEADS        = 20          # target number of heads (not used for learn_weights)
+# ---- Optional: exclude specific heads from final selection ----
+EXCLUDED_HEADS: List[int] = []    # any head indices to exclude from final selection
+
+# Utilities to normalize excluded head formats
+def _to_flat_head_index(item) -> Optional[int]:
+    """
+    Accepts formats: int (flat index), (layer, head), {layer, head}, "layer,head", "(layer, head)".
+    Returns flat index in [0, H) or None if invalid.
+    """
+    try:
+        # Flat int index
+        if isinstance(item, int):
+            return int(item) if 0 <= int(item) < H else None
+        # Pair formats: tuple/list
+        if isinstance(item, (tuple, list)) and len(item) == 2:
+            layer = int(item[0])
+            head = int(item[1])
+        # Dict format
+        elif isinstance(item, dict):
+            if "layer" in item and "head" in item:
+                layer = int(item["layer"]) ; head = int(item["head"])
+            else:
+                layer = int(item.get("l", item.get("layer", -1)))
+                head  = int(item.get("h", item.get("head", -1)))
+        # String format
+        elif isinstance(item, str):
+            s = item.strip().replace("(", "").replace(")", "")
+            if "," in s:
+                parts = s.split(",")
+                layer = int(parts[0].strip())
+                head  = int(parts[1].strip())
+            else:
+                # as flat integer string
+                val = int(s)
+                return val if 0 <= val < H else None
+        else:
+            return None
+        if 0 <= layer < NUM_LAYERS and 0 <= head < HEADS_PER_L:
+            return layer * HEADS_PER_L + head
+        return None
+    except Exception:
+        return None
+
+def _normalize_excluded_heads(excluded_heads_input) -> Set[int]:
+    if excluded_heads_input is None:
+        excluded_heads_input = EXCLUDED_HEADS
+    result: Set[int] = set()
+    for item in excluded_heads_input:
+        flat = _to_flat_head_index(item)
+        if flat is not None:
+            result.add(flat)
+    return result
 
 # ---- best_add stopping thresholds ----
 MAX_HEADS    = TARGET_HEADS
@@ -122,13 +174,17 @@ class KnnRegModel:
     metric_ctx: Optional[dict] = None
     head_weights: Optional[np.ndarray] = None  # (H,) for learn_weights mode
 
-def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: str = HEAD_SELECTION_MODE) -> Tuple[KnnRegModel, Dict]:
+def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: str = HEAD_SELECTION_MODE, excluded_heads: Optional[List[int]] = None) -> Tuple[KnnRegModel, Dict]:
     """
     selection_mode:
       - "topk"      : take top-K single-heads by LOEO MSE ranking
       - "best_add"  : greedy forward add until K heads
       - "reinforce" : REINFORCE to optimize head subset
+    excluded_heads:
+      - heads that must NOT appear in the final selected set
     """
+    # Normalize excluded heads (supports (layer, head) pairs)
+    excluded_set = _normalize_excluded_heads(excluded_heads)
     # Build preprocessed dataset
     preprocessed_data = build_dataset(
         attn_h5, episodes, use_pca=USE_PCA, use_zscore=USE_ZSCORE, pca_components=PCA_D
@@ -146,6 +202,29 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         print_rankings=PRINT_HEAD_RANKINGS
     )
 
+    # Helper: enforce excluded heads and top-up from rankings
+    def _enforce_excluded_and_fill(cur_sel: List[int], target_k: int, best_k: int) -> List[int]:
+        # Deduplicate while preserving order, and drop excluded
+        filtered = []
+        seen = set()
+        for h in cur_sel:
+            if h in excluded_set:
+                continue
+            if h in seen:
+                continue
+            filtered.append(h)
+            seen.add(h)
+        # Available pool from ranking of best_k
+        ranking_list = rankings_per_k.get(int(best_k), [])
+        for mse, h in ranking_list:
+            if h in excluded_set or h in seen:
+                continue
+            filtered.append(h)
+            seen.add(h)
+            if len(filtered) >= target_k:
+                break
+        return filtered
+
     # 2) Select heads by mode
     if selection_mode == "topk":
         selected_heads, best_k_value, cross_val_mse, per_k_mse_scores = simple_topk_select(
@@ -155,7 +234,30 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
             metric_scope=METRIC_SCOPE, use_fullspace=GLOBAL_METRIC_FULLSPACE,
             H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
         )
+        # Enforce exclusion and refill
+        target_k = min(TARGET_HEADS, max(0, H - len(excluded_set)))
+        selected_heads = _enforce_excluded_and_fill(selected_heads, target_k, best_k_value)
         head_probabilities = None
+        # Recompute per-k MSE and CV MSE with final selected heads
+        ctx_global = None
+        if METRIC_SCOPE == "global" and DIST_METRIC in {"whiten","proj","pls"}:
+            ctx_global = build_global_metric_ctx_for_heads(
+                preprocessed_data, selected_heads, DIST_METRIC,
+                pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
+                pls_components=PLS_COMPONENTS, use_fullspace=GLOBAL_METRIC_FULLSPACE,
+                H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
+            )
+        per_k_mse_scores = {}
+        for k in K_GRID:
+            mse_k = evaluate_leave_one_episode_out(
+                preprocessed_data.features, preprocessed_data.actions,
+                preprocessed_data.episode_ids, preprocessed_data.frame_ids,
+                selected_heads, k, DIST_METRIC, TEMP_EXCL_W,
+                pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
+                metric_scope=METRIC_SCOPE, metric_ctx_global=ctx_global,
+            )
+            per_k_mse_scores[int(k)] = float(mse_k)
+        cross_val_mse = float(per_k_mse_scores[int(best_k_value)])
     elif selection_mode == "best_add":
         selected_heads, best_k_value, cross_val_mse, per_k_mse_scores = greedy_forward_select(
             preprocessed_data.features, preprocessed_data.actions, preprocessed_data.episode_ids, preprocessed_data.frame_ids,
@@ -164,14 +266,40 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
             metric_scope=METRIC_SCOPE, use_fullspace=GLOBAL_METRIC_FULLSPACE,
             H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
         )
+        # Enforce exclusion and refill
+        target_k = min(TARGET_HEADS, max(0, H - len(excluded_set)))
+        selected_heads = _enforce_excluded_and_fill(selected_heads, target_k, best_k_value)
         head_probabilities = None
+        # Recompute per-k MSE and CV MSE with final selected heads
+        ctx_global = None
+        if METRIC_SCOPE == "global" and DIST_METRIC in {"whiten","proj","pls"}:
+            ctx_global = build_global_metric_ctx_for_heads(
+                preprocessed_data, selected_heads, DIST_METRIC,
+                pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
+                pls_components=PLS_COMPONENTS, use_fullspace=GLOBAL_METRIC_FULLSPACE,
+                H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
+            )
+        per_k_mse_scores = {}
+        for k in K_GRID:
+            mse_k = evaluate_leave_one_episode_out(
+                preprocessed_data.features, preprocessed_data.actions,
+                preprocessed_data.episode_ids, preprocessed_data.frame_ids,
+                selected_heads, k, DIST_METRIC, TEMP_EXCL_W,
+                pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
+                metric_scope=METRIC_SCOPE, metric_ctx_global=ctx_global,
+            )
+            per_k_mse_scores[int(k)] = float(mse_k)
+        cross_val_mse = float(per_k_mse_scores[int(best_k_value)])
     elif selection_mode == "reinforce":
         selected_heads, best_k_value, cross_val_mse, head_probabilities = reinforce_select_heads(
             preprocessed_data, K_target=TARGET_HEADS, iters=RF_ITERS, batch=RF_BATCH,
             lr=RF_LR, k_grid=K_GRID, metric=DIST_METRIC, temp_excl_w=TEMP_EXCL_W,
             entropy_bonus=RF_ENTROPY_BONUS, episode_subsample=RF_EPISODE_SUBSAMPLE
         )
-        # Additionally compute per-k MSE for printing
+        # Enforce exclusion and refill
+        target_k = min(TARGET_HEADS, max(0, H - len(excluded_set)))
+        selected_heads = _enforce_excluded_and_fill(selected_heads, target_k, best_k_value)
+        # Additionally compute per-k MSE for printing with final selected heads
         per_k_mse_scores = {}
         # Reuse global metric if enabled
         if METRIC_SCOPE == "global" and DIST_METRIC in {"whiten","proj","pls"}:
@@ -180,7 +308,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
                 pca_dim=WHITEN_PCA_DIM, proj_alpha=PROJ_ALPHA,
                 pls_components=PLS_COMPONENTS, use_fullspace=GLOBAL_METRIC_FULLSPACE,
                 H=H, metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE
-        )
+            )
         else:
             ctx_global = None
         for k in K_GRID:
@@ -204,6 +332,15 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         )
         # For weighted approach, we use all heads
         selected_heads = list(range(H))
+        # Apply exclusion by zeroing weights and renormalizing
+        if isinstance(head_weights, np.ndarray) and head_weights.shape[0] == H and len(excluded_set) > 0:
+            head_weights = head_weights.copy()
+            for h in excluded_set:
+                if 0 <= h < H:
+                    head_weights[h] = 0.0
+            s = float(head_weights.sum())
+            if s > 0:
+                head_weights = head_weights / s
         head_probabilities = head_weights  # Store learned weights
     else:
         raise ValueError("selection_mode must be one of {'topk','best_add','reinforce','learn_weights'}")
@@ -267,6 +404,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         "selected_heads": selected_heads,
         "best_k": best_k_value,
         "target_heads": TARGET_HEADS,
+        "excluded_heads": list(sorted(excluded_set)),
     }
     # Print per-k MSE
     if isinstance(per_k_mse_scores, dict) and len(per_k_mse_scores) > 0:
@@ -289,6 +427,8 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
     if DIST_METRIC == "pls":
         print(f"PLS components       : {PLS_COMPONENTS}")
     print(f"Temporal excl window : {TEMP_EXCL_W}")
+    if len(excluded_set) > 0:
+        print(f"Excluded heads       : {sorted(list(excluded_set))}")
     print(f"Selected heads ({len(selected_heads)}): {selected_heads}")
     print(f"LOEO-CV MSE          : {cross_val_mse:.6f}")
     print("==============================================")
@@ -307,7 +447,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_press_the_button_hard_50_state_first_action.h5"
+    ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5"
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
@@ -316,7 +456,7 @@ if __name__ == "__main__":
     # with h5py.File(ATTN_H5_EVAL, "r") as f:
     #     eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
 
-    model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
+    model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE, excluded_heads=EXCLUDED_HEADS)
     # print("Learned weights:", model.head_weights)
     # print("Head probabilities:", info["head_probabilities"])
     # Evaluate on a separate test set (optional)

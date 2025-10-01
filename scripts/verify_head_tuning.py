@@ -404,8 +404,8 @@ def main():
     # Optional: set mode to "full" or "lora"
     mode = "lora"
     if mode == "lora":
-        config_name = "KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP"
-        exp_name = "debug_lerobot_KNN_heads_place_marker_in_mug_200"
+        config_name = "KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption"
+        exp_name = "pick_up_red_mug_20_adapted_from_place_marker_in_mug_200"
         base_step = 1000
         tuned_step = 4999
     # else:
@@ -414,8 +414,8 @@ def main():
     #     base_step = 1
     #     tuned_step = 3
 
-    trainable_heads=[(1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
-                 (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)] #KNN, K=10, state token for: place green cube in red bowl
+    trainable_heads=[(16, 2), (16, 4), (16, 5), (11, 1), (16, 6), (12, 3), (11, 5), (16, 1), (16, 7), 
+            (5, 7), (14, 0), (11, 2), (2, 0), (14, 4), (10, 2), (8, 7), (8, 4), (13, 7), (11, 6), (3, 5)] #KNN, K=10, state token for: place green cube in red bowl
 
     untrained_head_to_check = (8, 8)
 

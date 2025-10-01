@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt  # type: ignore
 import matplotlib.patches as patches  # type: ignore
 from mpl_toolkits.mplot3d import Axes3D  # type: ignore
 
-ATTN_H5_PATH = "pick_train_attention_last_token_keyframe_new.h5"
-TASK_JSON    = "tasks.json"
+ATTN_H5_PATH = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_train_attention_last_token_keyframe_new.h5"
+TASK_JSON    = "/scr2/yusenluo/openpi_debug/openpi/src/openpi/tasks.json"
 
 
 
@@ -139,13 +139,13 @@ def split_episode_keys(
 
 
 # ---------- load task splits ----------
-# with open(TASK_JSON, "r") as f:
-#     task_dict = json.load(f)
-# PICK_TASKS = set(task_dict["Pick_training_tasks"])
+with open(TASK_JSON, "r") as f:
+    task_dict = json.load(f)
+PICK_TASKS = set(task_dict["Pick_training_tasks"])
 
 # WIPE_TASKS = set(task_dict["Wipe_training_tasks"])
 
-# EVAL_TASKS = set(task_dict["Pick_test_tasks"])
+EVAL_TASKS = set(task_dict["Pick_test_tasks"])
 
 # ------------------------------------------------------------
 # 0. split episode keys by task
@@ -607,7 +607,7 @@ def load_episode(h5_file, ep_key):
     frames = []
     for fk in sorted(grp.keys()):
         # raw = grp[fk]["last_token_attn"]
-        raw = grp[fk]["state_token_attn"]
+        raw = grp[fk]["last_token_attn"]
         # raw = grp[fk]["first_action_token_attn"]
         # —— convert dtype to float32 if necessary ——            ★ new
         arr = np.asarray(raw)
@@ -784,8 +784,8 @@ def run_sav(h5_path, pos_eps, neg_eps, k=20, agg="mean", sel_metric: str = "accu
     else:
         raise ValueError("sel_metric must be 'accuracy' or 'diff'")
 
-    heads = select_top_heads(score, k)
-    #heads = select_bottom_heads(score, k)
+    # heads = select_top_heads(score, k)
+    heads = select_bottom_heads(score, k)
     # ---- statistics ----------------------------------------------------
     print(f"🎯 Top-{k} heads ({sel_metric}) : {heads}")
 
@@ -954,32 +954,32 @@ def save_selected_head_activations(
 # 7.  Example run: Pick vs Non-Pick
 # ------------------------------------------------------------
 # 7.1  Sample support set
-# all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
-all_pos, all_neg = sample_episode_keys_from_h5s(
-    pos_h5_paths=[
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_marker_in_mug_20_state_first_action.h5",
-    ],
-    neg_h5_paths=[
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_cloth_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_yellow_cloth_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_green_cube_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_cube_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_mug_20_state_first_action.h5",
-    ], 
-    k_pos=20, k_neg=20, seed=42,
-)
+all_pos, all_neg = collect_episode_keys(ATTN_H5_PATH, pos_tasks=PICK_TASKS)
+# all_pos, all_neg = sample_episode_keys_from_h5s(
+#     pos_h5_paths=[
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_marker_in_mug_20_state_first_action.h5",
+#     ],
+#     neg_h5_paths=[
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_cloth_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_yellow_cloth_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_green_cube_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_cube_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5",
+#         "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_mug_20_state_first_action.h5",
+#     ], 
+#     k_pos=20, k_neg=20, seed=42,
+# )
 print(len(all_pos), len(all_neg))
 random.seed(42)
 support_pos = random.sample(all_pos, 20)
 support_neg = random.sample(all_neg, 20)    
 
-#sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
-sav_model = run_sav_multi(all_pos, all_neg, k=20, agg="mean", sel_metric="margin")
+sav_model = run_sav(ATTN_H5_PATH, support_pos, support_neg, k=20, agg="mean", sel_metric="margin")
+# sav_model = run_sav_multi(all_pos, all_neg, k=20, agg="mean", sel_metric="margin")
 # run_sav_frame_level(all_pos, all_neg, k=20, sel_metric="margin")
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5"
-find_top_variance_heads_single_h5(ATTN_H5_PATH, k=20, agg="mean", normalize="l2")
+# ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5"
+# find_top_variance_heads_single_h5(ATTN_H5_PATH, k=20, agg="mean", normalize="l2")
 
 # pickle.dump(sav_model, open("sav_pick.pkl", "wb"))
 
@@ -993,17 +993,17 @@ find_top_variance_heads_single_h5(ATTN_H5_PATH, k=20, agg="mean", normalize="l2"
 #     zero_fill=True,
 # )
 
-# EVAL_H5 = "pick_eval_attention_last_token_single_action_keyframe.h5"    
-# all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS)
-# print(len(all_pos_eval), len(all_neg_eval)) 
-# # print(all_pos_eval)
-# # print(all_neg_eval)
-# pos_eval = random.sample(all_pos_eval, 200)
-# neg_eval = random.sample(all_neg_eval, 200)
-# eval_eps    = pos_eval + neg_eval          # or a balanced sample
-# eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
+EVAL_H5 = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_single_action_keyframe.h5"    
+all_pos_eval, all_neg_eval = split_episode_keys(EVAL_H5, pos_keywords={"\\bpick\\b"}, exclude_kw={"\\bwipe\\b"}, train_task_set=PICK_TASKS)
+print(len(all_pos_eval), len(all_neg_eval)) 
+# print(all_pos_eval)
+# print(all_neg_eval)
+pos_eval = random.sample(all_pos_eval, 200)
+neg_eval = random.sample(all_neg_eval, 200)
+eval_eps    = pos_eval + neg_eval          # or a balanced sample
+eval_labels = {ep: (1 if ep in pos_eval else 0) for ep in eval_eps}
 # # plot_tsne_from_sav(EVAL_H5, eval_eps, eval_labels, sav_model, head="all", dim=3)
-# evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
+evaluate(EVAL_H5, eval_eps, eval_labels, sav_model)
 # ks, accs = evaluate_curve(EVAL_H5, eval_eps, eval_labels, sav_model,
 #                           max_k=32, step=4, plot_file="topk_curve.png")
 
