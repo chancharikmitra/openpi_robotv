@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_press_the_button_hard_50_state_first_action.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "attention_dataset/place_marker_in_mug_knn_20_heads.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 200
 USE_KEYFRAME = True
@@ -32,10 +32,10 @@ from openpi.policies import policy_config
 from openpi.shared import download
 
 if not APPEND_ACTION_LABELS_ONLY:
-    config = config.get_config("pi0_droid")
-    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
+    config = config.get_config("KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP")
+    checkpoint_dir = download.maybe_download("checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999")
     # Ensure normalization assets are present (includes droid/norm_stats.json)
-    download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
+    # download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
 
     # Create a trained policy.
     policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0DROID Module instance (no weights)
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "press the button hard"
+            prompt_text = "place marker in mug"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/press_the_button_hard_50.h5"
+h5_path = "/home/yusenluo/openpi_robotv/9_21/place_marker_in_mug_200.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress

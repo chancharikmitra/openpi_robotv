@@ -446,8 +446,104 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
 
 
 
+def evaluate_custom_heads_on_k_grid(
+    attn_h5: str, 
+    episodes: List[str], 
+    custom_heads: List[int], 
+    k_grid: List[int] = None,
+    metric: str = DIST_METRIC,
+    temp_excl_w: int = TEMP_EXCL_W,
+    use_pca: bool = USE_PCA,
+    use_zscore: bool = USE_ZSCORE,
+    pca_d: int = PCA_D,
+    whiten_pca_dim: int = WHITEN_PCA_DIM,
+    proj_alpha: float = PROJ_ALPHA,
+    pls_components: int = PLS_COMPONENTS,
+    metric_scope: str = METRIC_SCOPE,
+    use_fullspace: bool = GLOBAL_METRIC_FULLSPACE,
+    print_results: bool = True
+) -> Dict:
+    """
+    评估指定头列表在不同k值上的MSE性能
+    
+    Args:
+        attn_h5: 注意力数据文件路径
+        episodes: 要评估的episode列表
+        custom_heads: 要评估的头索引列表
+        k_grid: k值网格，默认使用全局K_GRID
+        其他参数: 使用全局配置的默认值
+        
+    Returns:
+        包含每个k值MSE结果的字典
+    """
+    if k_grid is None:
+        k_grid = K_GRID
+    
+    print(f"正在评估自定义头列表: {custom_heads}")
+    print(f"头数量: {len(custom_heads)}")
+    print(f"K值网格: {k_grid}")
+    print(f"距离度量: {metric}")
+    print("=" * 50)
+    
+    # 1) 构建预处理数据集
+    preprocessed_data = build_dataset(
+        attn_h5, episodes, 
+        use_pca=use_pca, 
+        use_zscore=use_zscore, 
+        pca_components=pca_d
+    )
+    
+    # 2) 构建全局度量上下文（如果需要）
+    ctx_global = None
+    if metric_scope == "global" and metric in {"whiten", "proj", "pls"}:
+        ctx_global = build_global_metric_ctx_for_heads(
+            preprocessed_data, custom_heads, metric,
+            pca_dim=whiten_pca_dim, proj_alpha=proj_alpha,
+            pls_components=pls_components, use_fullspace=use_fullspace,
+            H=H, metric_ctx_cache={}, metric_ctx_fullspace={}
+        )
+    
+    # 3) 对每个k值评估MSE
+    per_k_mse = {}
+    best_mse = float('inf')
+    best_k = None
+    
+    for k in k_grid:
+        mse = evaluate_leave_one_episode_out(
+            preprocessed_data.features, preprocessed_data.actions,
+            preprocessed_data.episode_ids, preprocessed_data.frame_ids,
+            heads=custom_heads, k=k, metric=metric, temp_excl_w=temp_excl_w,
+            pca_dim=whiten_pca_dim, proj_alpha=proj_alpha,
+            metric_scope=metric_scope, metric_ctx_global=ctx_global,
+        )
+        per_k_mse[int(k)] = float(mse)
+        
+        if mse < best_mse:
+            best_mse = mse
+            best_k = k
+        
+        if print_results:
+            print(f"k={k:2d}: MSE = {mse:.6f}")
+    
+    if print_results:
+        print("=" * 50)
+        print(f"最佳k值: {best_k}, 最佳MSE: {best_mse:.6f}")
+        print("=" * 50)
+    
+    return {
+        "per_k_mse": per_k_mse,
+        "best_k": best_k,
+        "best_mse": best_mse,
+        "custom_heads": custom_heads,
+        "k_grid": list(k_grid),
+        "metric": metric,
+        "episodes": episodes,
+        "num_heads": len(custom_heads)
+    }
+
+
 if __name__ == "__main__":
-    ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5"
+    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/place_marker_in_mug_first_20_heads.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
@@ -456,7 +552,40 @@ if __name__ == "__main__":
     # with h5py.File(ATTN_H5_EVAL, "r") as f:
     #     eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
 
-    model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE, excluded_heads=EXCLUDED_HEADS)
+    # 示例1: 训练完整模型
+    # model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
+    
+    # 示例2: 评估自定义头列表
+    # 你可以在这里指定你想要评估的头列表
+    custom_heads_example = [92, 139, 142, 91, 23, 105, 31, 95, 113, 119,120, 88, 114, 32] #[10, 19, 92, 139, 142, 91, 23, 105, 31, 95,12, 13, 5, 113, 119, 9, 120, 88, 114, 32]  # 示例头列表
+    
+    print("\n" + "="*60)
+    print("评估自定义头列表性能")
+    print("="*60)
+    
+    custom_results = evaluate_custom_heads_on_k_grid(
+        attn_h5=ATTN_H5,
+        episodes=all_eps,
+        custom_heads=custom_heads_example,
+        k_grid=K_GRID,  # 或者你可以指定自定义的k值列表，如 [10, 20, 30]
+        print_results=True
+    )
+    
+    # 你也可以这样使用：
+    # 
+    # # 评估最好的头
+    # best_heads = [53, 75, 23, 20, 52]
+    # results_best = evaluate_custom_heads_on_k_grid(ATTN_H5, all_eps, best_heads)
+    # 
+    # # 评估最差的头  
+    # worst_heads = [3, 141, 143, 138, 142]
+    # results_worst = evaluate_custom_heads_on_k_grid(ATTN_H5, all_eps, worst_heads)
+    # 
+    # # 比较结果
+    # print(f"最好头的最佳MSE: {results_best['best_mse']:.6f}")
+    # print(f"最差头的最佳MSE: {results_worst['best_mse']:.6f}")
+    #
+
     # print("Learned weights:", model.head_weights)
     # print("Head probabilities:", info["head_probabilities"])
     # Evaluate on a separate test set (optional)
@@ -464,15 +593,15 @@ if __name__ == "__main__":
     # print("evaluation results:", evaluation_results["per_k_mse"], evaluation_results["overall_mse"])
 
     # Inference: predict actions (via KNN) frame-by-frame for an episode
-    test_ep = all_eps[0]
-    pred_actions = predict_episode(ATTN_H5, test_ep, model)
-    print("Pred shape:", pred_actions.shape)
+    # test_ep = all_eps[0]
+    # pred_actions = predict_episode(ATTN_H5, test_ep, model)
+    # print("Pred shape:", pred_actions.shape)
 
-    # Inference: predict actions (via KNN) given activations
-    attn_frame = np.random.rand(18, 8, 256)
-    print("Attn frame shape:", attn_frame.shape)
-    action = predict_episode_from_activation(attn_frame, model)
-    print("Pred shape:", action.shape)
+    # # Inference: predict actions (via KNN) given activations
+    # attn_frame = np.random.rand(18, 8, 256)
+    # print("Attn frame shape:", attn_frame.shape)
+    # action = predict_episode_from_activation(attn_frame, model)
+    # print("Pred shape:", action.shape)
 
     # Example: Visualize neighbors for the trained model (optional)
     # diag = knn_overlap_and_plots(
