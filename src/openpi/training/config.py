@@ -725,7 +725,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/press_the_button_hard_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -993,23 +993,23 @@ _CONFIGS = [
             # (16, 2), (16, 4), (16, 5), (11, 1), (16, 6), (12, 3), (11, 5), (16, 1), (16, 7), 
             # (5, 7), (14, 0), (11, 2), (2, 0), (14, 4), (10, 2), (8, 7), (8, 4), (13, 7), (11, 6), (3, 5)
             # ] #KNN, K=20, state token for: pick up red mug adapted from place marker in mug  200
-            # trainable_head_indices=[
-            #     (16, 2), (16, 4), (16, 5), (11, 1), (16, 6), (12, 3), (11, 5), (16, 1), (16, 7), 
-            #     (5, 7), (14, 0), (11, 2), (2, 0), (14, 4), (10, 2), (8, 7), (8, 4), (13, 7), (11, 6), (3, 5)
-            # ] #KNN, K=20, state token for: pick up red mug adapted from place marker in mug  200
+            trainable_head_indices=[
+                (7, 4), (4, 7), (15, 5), (16, 2), (3, 1), (3, 3), (11, 6), (14, 6), (16, 3), (9, 1), 
+                (2, 0), (16, 6), (13, 3), (17, 5), (6, 6), (14, 4), (3, 5), (11, 2), (0, 4), (17, 7)
+            ] #KNN, K=20, state token for: place green cube in red bowl adapted from place marker in mug  200
             # trainable_head_indices=[
             #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
             #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
             # ] #KNN, K=40, state token for: place marker in mug  200
-            trainable_head_indices=[
-                (11, 4), (1, 1), (2, 7), (2, 3), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), 
-                (16, 2), (3, 1), (3, 3), (11, 6), (16, 3), (3, 7), (14, 6), (13, 1), (2, 0), (1, 4)
-            ] #KNN, K=20, state token for: place green cube in red bowl  20
+            # trainable_head_indices=[
+            #     (11, 4), (1, 1), (2, 7), (2, 3), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), 
+            #     (16, 2), (3, 1), (3, 3), (11, 6), (16, 3), (3, 7), (14, 6), (13, 1), (2, 0), (1, 4)
+            # ] #KNN, K=20, state token for: place green cube in red bowl  20
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter_always_freeze_expert_and_siglip(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("/home/ubuntu/robotic-steering/openpi_robotv/checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
@@ -1135,7 +1135,7 @@ TrainConfig(
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/press_the_button_hard_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1158,10 +1158,10 @@ TrainConfig(
             #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
             #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
             # ] #KNN, K=40, state token for: place marker in mug  200
-            # trainable_head_indices=[
-            #     (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
-            #     (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
-            # ] #KNN, K=40, state token for: press the button hard  50
+            trainable_head_indices=[
+                (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
+                (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
+            ] #KNN, K=40, state token for: press the button hard  50
             # trainable_head_indices=[
             #     (16, 5), (2, 3), (11, 7), (17, 6), (16, 6), (5, 7), (11, 4), (11, 0), (16, 4), (16, 7), 
             #     (16, 1), (13, 2), (11, 6), (4, 0), (1, 4), (2, 7), (13, 5), (16, 0), (16, 2), (13, 7)
@@ -1170,10 +1170,10 @@ TrainConfig(
             #     (3, 7), (2, 7), (11, 4), (16, 2), (2, 3), (4, 0), (11, 3), (16, 1), (11, 0), (1, 4), 
             #     (11, 7), (1, 2), (17, 6), (14, 2), (1, 5), (16, 5), (11, 5), (5, 7), (12, 3), (8, 7)
             # ] #KNN, K=30, state token for: pick up red mug  20
-            trainable_head_indices=[
-                (11, 4), (1, 1), (2, 7), (2, 3), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), 
-                (16, 2), (3, 1), (3, 3), (11, 6), (16, 3), (3, 7), (14, 6), (13, 1), (2, 0), (1, 4)
-            ] #KNN, K=20, state token for: place green cube in red bowl  20
+            # trainable_head_indices=[
+            #     (11, 4), (1, 1), (2, 7), (2, 3), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), 
+            #     (16, 2), (3, 1), (3, 3), (11, 6), (16, 3), (3, 7), (14, 6), (13, 1), (2, 0), (1, 4)
+            # ] #KNN, K=20, state token for: place green cube in red bowl  20
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
@@ -1441,7 +1441,7 @@ TrainConfig(
         optimizer=_optimizer.AdamWForHeadTuning(
             freeze_kv=True,
             only_attention=False,
-            freeze_mlp=True,
+            freeze_mlp=False,
             trainable_head_indices=[
                 (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (1, 0), (1, 1), (1, 2),
                 (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (2, 0), (2, 1), (2, 2), (2, 3), (0, 0),
