@@ -1194,6 +1194,61 @@ TrainConfig(
         ema_decay=None,
     ),
 
+    TrainConfig(
+        name="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_marker_in_mug_200",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (7, 1), (13, 1), (10, 1), (6, 1), (1, 1), (9, 1), (17, 0), (12, 1), 
+            #     (5, 1), (11, 1), (3, 1), (14, 1), (8, 1), (15, 1), (4, 1), (2, 1), (0, 1),
+            #     (16, 0), (16, 1), (15, 0)
+            # ] #Gradient, place marker in mug 20, 1000 steps, z-score normalized
+            # trainable_head_indices=[
+            #     (0, 1), (0, 0), (0, 5), (0, 3), (0, 6), (0, 2), (0, 4), (0, 7), (1, 1),
+            #     (6, 1), (1, 0), (5, 1), (11, 1), (17, 0), (14, 1), (12, 1), (4, 1), (15, 1), (1, 6), (1, 7)
+            # ] #Gradient, place marker in mug 20, 1000 steps
+            # trainable_head_indices=[
+            #     (0, 5), (0, 0), (0, 3), (0, 6), (0, 2), (0, 1), (0, 4), (0, 7), (1, 6), 
+            #     (1, 7), (1, 0), (1, 5), (1, 1), (1, 3), (1, 2), (1, 4), (14, 6), (6, 4), (8, 4), (6, 3)
+            # ] #Gradient, place marker in mug 20, 1000 steps, exclude KV
+            trainable_head_indices=[
+                (8, 4), (17, 6), (4, 6), (0, 5), (13, 3), (2, 2), (7, 3), (10, 0), (5, 1), 
+                (9, 4), (16, 2), (14, 6), (12, 4), (3, 5), (6, 4), (11, 5), (1, 6), (15, 3), (16, 1), (11, 0)
+            ] #Gradient, place marker in mug 20, 1000 steps, exclude KV, z-score normalized
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
     
     TrainConfig(
         name="KNN_heads_pi0_droid_lerobot_finetune_freeze_SIGLIP_ActionExpert",
