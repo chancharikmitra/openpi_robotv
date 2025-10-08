@@ -725,7 +725,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/press_the_button_hard_20",
+            repo_id="yusenluo9z/place_marker_in_mug_20_place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1193,6 +1193,54 @@ TrainConfig(
         keep_period=1000,
         ema_decay=None,
     ),
+
+
+    TrainConfig(
+        name="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_marker_in_mug_20_place_green_cube_in_red_bowl_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7),
+            #     (1, 1), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), (16, 2), (3, 1), (3, 3)
+            # ] #KNN, joint 20 heads (10 heads each)
+            trainable_head_indices=[
+                (11, 4), (4, 0), (16, 0), (13, 1), (14, 1), (3, 7), (11, 0), (16, 1), (15, 6), (2, 7), 
+                (11, 7), (13, 3), (13, 7), (11, 6), (2, 3), (14, 7), (17, 7), (15, 5), (1, 1), (1, 2),
+            ] #KNN, joint 20 heads (20 heads from merged activation dataset)
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
 
     TrainConfig(
         name="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
