@@ -53,6 +53,15 @@ class EnvMode(enum.Enum):
 
     Sanity_Marker_in_Mug = "Sanity_Marker_in_Mug"
 
+    exp1 = "exp1"
+    exp2 = "exp2"
+    exp3 = "exp3"
+
+    gradient1 = "gradient1"
+    gradient2 = "gradient2"
+    gradient3 = "gradient3"
+    gradient4 = "gradient4" 
+
     test = "test"
 
 @dataclasses.dataclass
@@ -195,6 +204,19 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999",
     ),
 
+    EnvMode.exp1: Checkpoint(
+        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
+    ),
+    EnvMode.exp2: Checkpoint(
+        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20_from_merged/4999",
+    ),
+    EnvMode.exp3: Checkpoint(
+        config="All_heads_LoRA",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/All_heads_LoRA/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
+    ),
+
 
     ##################
     # Figure 3
@@ -243,7 +265,25 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
     EnvMode.test: Checkpoint(
         config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/ICLR_Revisions/package/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/place_green_cube_in_red_bowl_20_adapted_from_place_marker_in_mug_200_non_overlapping/4999",
-    )
+    ),
+
+    EnvMode.gradient1: Checkpoint(
+        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps/4999",
+    ),
+    EnvMode.gradient2: Checkpoint(
+        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps/4999",
+    ),
+    EnvMode.gradient3: Checkpoint(
+        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps_exclude_KV/4999",
+    ),
+    EnvMode.gradient4: Checkpoint(
+        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps_exclude_KV/4999",
+    ),
+
 
 }
 def create_default_policy(env: EnvMode, *, default_prompt: str | None = None) -> _policy.Policy:
