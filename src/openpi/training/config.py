@@ -756,6 +756,73 @@ _CONFIGS = [
     ),
 
     TrainConfig(
+        name="pi05_All_heads_LoRA",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/pick_up_red_cube_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=7,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
+        name="All_heads_LoRA_freeze_SIGLIP_ActionExpert",
+        model=pi0_config.Pi0Config(
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_marker_in_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=1000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=250,
+        keep_period=250,
+        ema_decay=None,
+    ),
+    
+    TrainConfig(
         name="All_heads_LoRA_Adaption",
         model=pi0_config.Pi0Config(
             action_horizon=16,
@@ -1026,6 +1093,66 @@ _CONFIGS = [
     ),
 
     TrainConfig(
+        name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/pick_up_red_cube_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
+            #     (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            # ] #KNN, K=30, state token for: place marker in mug  20
+            # trainable_head_indices=[
+            #     (5, 7), (2, 6), (4, 7), (8, 4), (4, 4), (3, 2), (4, 5), (3, 1), (5, 5), (1, 6), 
+            #     (9, 7), (7, 1), (2, 0), (4, 3), (2, 2), (1, 2), (1, 5), (6, 3), (9, 2), (5, 3)
+            # ] #KNN, K=40, state token for: push red bowl to red cup  20
+            # trainable_head_indices=[
+            #     (3, 2), (3, 1), (8, 4), (2, 6), (4, 4), (5, 7), (0, 0), (5, 5), (1, 6), (4, 5), 
+            #     (4, 7), (6, 3), (7, 1), (5, 3), (4, 3), (1, 5), (2, 0), (9, 7), (10, 2), (2, 1)
+            # ] #KNN, K=30, state token for: press the button hard 20
+            # trainable_head_indices=[
+            #     (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
+            #     (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
+            # ] #KNN, K=20, state token for: place green cube in red bowl 20
+            trainable_head_indices=[
+                (8, 4), (7, 1), (9, 7), (8, 5), (9, 4), (2, 0), (3, 2), (9, 5), (9, 1), (3, 1), 
+                (9, 2), (4, 4), (10, 1), (12, 0), (4, 2), (9, 0), (7, 5), (12, 6), (4, 7), (10, 2)
+            ] #KNN, K=30, state token for: pick up red cube 20
+
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+    
+    TrainConfig(
         name="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
         model=pi0_config.Pi0Config(
             action_horizon=16,
@@ -1269,14 +1396,18 @@ TrainConfig(
             #     (0, 1), (0, 0), (0, 5), (0, 3), (0, 6), (0, 2), (0, 4), (0, 7), (1, 1),
             #     (6, 1), (1, 0), (5, 1), (11, 1), (17, 0), (14, 1), (12, 1), (4, 1), (15, 1), (1, 6), (1, 7)
             # ] #Gradient, place marker in mug 20, 1000 steps
+            trainable_head_indices=[
+                (0, 1), (1, 1), (0, 0), (6, 1), (4, 1), (0, 3), (0, 6), (1, 0),
+                (0, 5), (0, 7), (0, 2), (0, 4), (10, 1), (8, 1), (6, 0), (2, 1), (11, 1), (3, 1), (9, 1), (7, 1)
+            ], #Gradient, place marker in mug 20, 1000 steps frozen SIGLIP ActionExpert
             # trainable_head_indices=[
             #     (0, 5), (0, 0), (0, 3), (0, 6), (0, 2), (0, 1), (0, 4), (0, 7), (1, 6), 
             #     (1, 7), (1, 0), (1, 5), (1, 1), (1, 3), (1, 2), (1, 4), (14, 6), (6, 4), (8, 4), (6, 3)
             # ] #Gradient, place marker in mug 20, 1000 steps, exclude KV
-            trainable_head_indices=[
-                (8, 4), (17, 6), (4, 6), (0, 5), (13, 3), (2, 2), (7, 3), (10, 0), (5, 1), 
-                (9, 4), (16, 2), (14, 6), (12, 4), (3, 5), (6, 4), (11, 5), (1, 6), (15, 3), (16, 1), (11, 0)
-            ] #Gradient, place marker in mug 20, 1000 steps, exclude KV, z-score normalized
+            # trainable_head_indices=[
+            #     (8, 4), (17, 6), (4, 6), (0, 5), (13, 3), (2, 2), (7, 3), (10, 0), (5, 1), 
+            #     (9, 4), (16, 2), (14, 6), (12, 4), (3, 5), (6, 4), (11, 5), (1, 6), (15, 3), (16, 1), (11, 0)
+            # ] #Gradient, place marker in mug 20, 1000 steps, exclude KV, z-score normalized
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
