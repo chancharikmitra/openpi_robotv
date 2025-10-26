@@ -350,6 +350,32 @@ class Pi0(_model.BaseModel):
                 else:
                     attention_outputs["llm_state_activations"] = heads_sa[None, ...]
 
+        # @yusen: in pi05, extract first action heads via a single extra forward (no state token exists)
+        if return_state_and_first_action_heads and self.pi05:
+            zeros_time = jnp.zeros((batch_size,), dtype=observation.state.dtype)
+            # Include action tokens only; in pi05 the first suffix token is the first action token
+            sa_tokens, sa_mask, sa_ar_mask, sa_adarms = self.embed_suffix(
+                observation, x_0, zeros_time, include_action_tokens=True
+            )
+            sa_attn_mask = make_attn_mask(sa_mask, sa_ar_mask)
+            prefix_attn_mask_rep = einops.repeat(prefix_mask, "b p -> b s p", s=sa_tokens.shape[1])
+            full_attn_mask_sa = jnp.concatenate([prefix_attn_mask_rep, sa_attn_mask], axis=-1)
+            positions_sa = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(sa_mask, axis=-1) - 1
+
+            (_, _), _, out_sa = self.PaliGemma.llm(
+                [None, sa_tokens],
+                mask=full_attn_mask_sa,
+                positions=positions_sa,
+                kv_cache=kv_cache,
+                adarms_cond=[None, sa_adarms],
+                return_attention_heads=True,
+                return_attention_probs=False,
+            )
+            heads_sa = out_sa.get("attention_heads")
+            if heads_sa is not None and sa_tokens.shape[1] >= 1:
+                # First suffix token is the first action token in pi05
+                attention_outputs["llm_first_action_activations"] = heads_sa[None, :, :, 0, :, :]  # [1, L, B, Hflat, Hdim]
+
         if return_attention_heads or return_attention_probs or return_state_heads or return_state_and_first_action_heads:
             # @yusen: Return actions with attention collected during prefix prefill
             return x_0, attention_outputs

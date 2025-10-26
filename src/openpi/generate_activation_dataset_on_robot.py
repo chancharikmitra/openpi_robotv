@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "attention_dataset/place_marker_in_mug_knn_20_heads.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "attention_dataset/pi0.5_pick_up_red_cube_20.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 200
 USE_KEYFRAME = True
@@ -32,10 +32,10 @@ from openpi.policies import policy_config
 from openpi.shared import download
 
 if not APPEND_ACTION_LABELS_ONLY:
-    config = config.get_config("KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP")
-    checkpoint_dir = download.maybe_download("checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999")
+    config = config.get_config("pi05_droid")
+    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid")
     # Ensure normalization assets are present (includes droid/norm_stats.json)
-    # download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
+    download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid/assets")
 
     # Create a trained policy.
     policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0DROID Module instance (no weights)
@@ -143,9 +143,9 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
         # 3) fallback: infer from group name
         lower = name.lower()
-        m = re.search(r"place[-_ ]marker[-_ ]in[-_ ]mug", lower)
+        m = re.search(r"pick[-_ ]up[-_ ]red[-_ ]cube", lower)
         if m:
-            return "place green cube in red bowl"
+            return "pick up red cube"
         base = name.replace("-", " ").replace("_", " ")
         base = re.sub(r"\s+", " ", base).strip()
         return base
@@ -166,7 +166,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "place marker in mug"
+            prompt_text = "pick up red cube"
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/home/yusenluo/openpi_robotv/9_21/place_marker_in_mug_200.h5"
+h5_path = "/home/yusenluo/openpi_robotv/pick_up_red_cube_20.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
@@ -316,7 +316,7 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                     obs,
                     return_attention_heads=True,
                     return_attention_probs=True,
-                    return_state_heads=True,
+                    return_state_heads=False,
                     return_state_and_first_action_heads=True,
                 )
                 attention_outputs = results.get("attention_outputs")
@@ -404,6 +404,21 @@ with h5py.File(ATTN_H5_PATH, file_mode) as h5_out:  # auto flush & close on exit
                         del grp["first_action_token_attn"]
                     grp.create_dataset("first_action_token_attn", data=first_action_token_attn, compression="gzip")
 
+                first_action_attn = attention_outputs.get("llm_first_action_activations")
+                if first_action_attn is not None:
+                    # Drop leading singleton dims
+                    while first_action_attn.ndim > 5 and first_action_attn.shape[0] == 1:
+                        first_action_attn = first_action_attn[0]
+                    # Expected: [L, B, 1, H, D] or [B, 1, H, D]``[1, 18, 1, 8, 256] 
+
+                    first_action_token_attn = first_action_attn.squeeze()
+                    # Save/overwrite state (from this combined path) and first action
+                    first_action_token_attn = np.asarray(first_action_token_attn, dtype=np.float32)
+                    print("first_action_token_attn.shape:", first_action_token_attn.shape)
+                    if "first_action_token_attn" in grp:
+                        del grp["first_action_token_attn"]
+                    grp.create_dataset("first_action_token_attn", data=first_action_token_attn, compression="gzip")
+                
                 # Optionally save prefill attention probabilities
                 # prefill_probs = attention_outputs.get("llm_attn_probs_prefill") #(18, 1, 8, 1018)
                 # if prefill_probs is not None:

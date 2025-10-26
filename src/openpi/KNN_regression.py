@@ -34,7 +34,7 @@ PLS_COMPONENTS = 32      # upper bound for PLS components
 USE_PCA      = False
 USE_ZSCORE   = False             # per-head z-score normalization
 PCA_D        = 32                # per-head PCA dim; disable by setting USE_PCA=False
-DIST_METRIC  = "euclidean"         # "cosine" | "euclidean" | "whiten" | "proj" | "pls"
+DIST_METRIC  = "cosine"         # "cosine" | "euclidean" | "whiten" | "proj" | "pls"
 K_GRID       = [10,20,30,40]        # candidate k for KNN
 TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 
@@ -219,10 +219,10 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         for mse, h in ranking_list:
             if h in excluded_set or h in seen:
                 continue
-            filtered.append(h)
-            seen.add(h)
             if len(filtered) >= target_k:
                 break
+            filtered.append(h)
+            seen.add(h)
         return filtered
 
     # 2) Select heads by mode
@@ -543,7 +543,7 @@ def evaluate_custom_heads_on_k_grid(
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/place_marker_in_mug_first_20_heads.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
+    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_pick_up_red_cube_20.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
@@ -553,23 +553,23 @@ if __name__ == "__main__":
     #     eval_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()] #
 
     # 示例1: 训练完整模型
-    # model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
+    model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
     
     # 示例2: 评估自定义头列表
     # 你可以在这里指定你想要评估的头列表
-    custom_heads_example = [92, 139, 142, 91, 23, 105, 31, 95, 113, 119,120, 88, 114, 32] #[10, 19, 92, 139, 142, 91, 23, 105, 31, 95,12, 13, 5, 113, 119, 9, 120, 88, 114, 32]  # 示例头列表
+    # custom_heads_example = [92, 139, 142, 91, 23, 105, 31, 95, 113, 119,120, 88, 114, 32] #[10, 19, 92, 139, 142, 91, 23, 105, 31, 95,12, 13, 5, 113, 119, 9, 120, 88, 114, 32]  # 示例头列表
     
-    print("\n" + "="*60)
-    print("评估自定义头列表性能")
-    print("="*60)
+    # print("\n" + "="*60)
+    # print("评估自定义头列表性能")
+    # print("="*60)
     
-    custom_results = evaluate_custom_heads_on_k_grid(
-        attn_h5=ATTN_H5,
-        episodes=all_eps,
-        custom_heads=custom_heads_example,
-        k_grid=K_GRID,  # 或者你可以指定自定义的k值列表，如 [10, 20, 30]
-        print_results=True
-    )
+    # custom_results = evaluate_custom_heads_on_k_grid(
+    #     attn_h5=ATTN_H5,
+    #     episodes=all_eps,
+    #     custom_heads=custom_heads_example,
+    #     k_grid=K_GRID,  # 或者你可以指定自定义的k值列表，如 [10, 20, 30]
+    #     print_results=True
+    # )
     
     # 你也可以这样使用：
     # 
