@@ -823,6 +823,40 @@ _CONFIGS = [
     ),
     
     TrainConfig(
+        name="pi05_All_heads_LoRA_Adaption",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_marker_in_mug_20/4999/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
         name="All_heads_LoRA_Adaption",
         model=pi0_config.Pi0Config(
             action_horizon=16,
@@ -1077,6 +1111,53 @@ _CONFIGS = [
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter_always_freeze_expert_and_siglip(),
         weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
+        name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (7, 0), (10, 2), (7, 5), (7, 6), (8, 7), (10, 1), (11, 7), (3, 6), (11, 5), (10, 6), 
+            #     (10, 7), (6, 6), (10, 4), (11, 2), (6, 1), (2, 1), (1, 5), (4, 5), (7, 4), (8, 1)
+            # ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 non-overlapping heads
+            trainable_head_indices=[
+                (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
+                (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 same heads
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_20/4999/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
