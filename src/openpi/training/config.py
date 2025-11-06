@@ -193,6 +193,7 @@ class DataConfigFactory(abc.ABC):
             asset_id=asset_id,
             norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), asset_id),
             use_quantile_norm=model_config.model_type != ModelType.PI0,
+            # use_quantile_norm=False,
         )
 
     def _load_norm_stats(self, assets_dir: epath.Path, asset_id: str | None) -> dict[str, _transforms.NormStats] | None:
@@ -763,10 +764,15 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20_place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/place_marker_in_mug_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
+            ),
+            assets=AssetsConfig(
+                # Important: reuse the original DROID norm stats during fine-tuning!
+                assets_dir="gs://openpi-assets/checkpoints/pi05_droid/assets",
+                asset_id="droid",
             ),
         ),
         freeze_filter=pi0_config.Pi0Config(
@@ -1181,7 +1187,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20",
+            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1203,10 +1209,10 @@ _CONFIGS = [
             #     (3, 2), (3, 1), (8, 4), (2, 6), (4, 4), (5, 7), (0, 0), (5, 5), (1, 6), (4, 5), 
             #     (4, 7), (6, 3), (7, 1), (5, 3), (4, 3), (1, 5), (2, 0), (9, 7), (10, 2), (2, 1)
             # ] #KNN, K=30, state token for: press the button hard 20
-            # trainable_head_indices=[
-            #     (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
-            #     (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
-            # ] #KNN, K=20, state token for: place green cube in red bowl 20
+            trainable_head_indices=[
+                (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
+                (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
+            ] #KNN, K=20, state token for: place green cube in red bowl 20
             # trainable_head_indices=[
             #     (8, 4), (7, 1), (9, 7), (8, 5), (9, 4), (2, 0), (3, 2), (9, 5), (9, 1), (3, 1), 
             #     (9, 2), (4, 4), (10, 1), (12, 0), (4, 2), (9, 0), (7, 5), (12, 6), (4, 7), (10, 2)
@@ -1215,10 +1221,10 @@ _CONFIGS = [
             #     (5, 7), (7, 1), (3, 2), (9, 2), (9, 7), (8, 4), (3, 1), (4, 6), (4, 4), (9, 4), 
             #     (2, 6), (5, 5), (5, 3), (9, 1), (9, 0), (4, 7), (6, 3), (8, 6), (9, 5), (8, 5)
             # ] #KNN, K=30, state token for: place marker in mug  20 and place green cube in red bowl 20
-            trainable_head_indices=[
-                (8, 4), (1, 1), (9, 7), (3, 6), (10, 3), (13, 4), (17, 1), (4, 2), (0, 4), (12, 3),
-                (15, 1), (13, 3), (4, 6), (2, 1), (17, 6), (13, 7), (5, 4), (5, 6), (10, 6), (11, 1)
-            ] # CMA, 300 frames, place marker in mug 20
+            # trainable_head_indices=[
+            #     (8, 4), (1, 1), (9, 7), (3, 6), (10, 3), (13, 4), (17, 1), (4, 2), (0, 4), (12, 3),
+            #     (15, 1), (13, 3), (4, 6), (2, 1), (17, 6), (13, 7), (5, 4), (5, 6), (10, 6), (11, 1)
+            # ] # CMA, 300 frames, place marker in mug 20
 
         ),
         freeze_filter=pi0_config.Pi0Config(
@@ -1241,6 +1247,61 @@ _CONFIGS = [
         ema_decay=None,
     ),
 
+    TrainConfig(
+        name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/place_marker_in_mug_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            assets=AssetsConfig(
+                # Important: reuse the original DROID norm stats during fine-tuning!
+                assets_dir="gs://openpi-assets/checkpoints/pi05_droid/assets",
+                asset_id="droid",
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            trainable_head_indices=[
+                (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
+                (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            ] #KNN, K=30, state token for: place marker in mug  20
+            # trainable_head_indices=[
+            #     (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
+            #     (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
+            # ] #KNN, K=20, state token for: place green cube in red bowl 20
+
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=5000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=5000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+
+    # Queries Only
     TrainConfig(
         name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Queries_Only",
         model=pi0_config.Pi0Config(
