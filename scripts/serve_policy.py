@@ -64,6 +64,9 @@ class EnvMode(enum.Enum):
 
     test = "test"
 
+    LoRA_Pick_Up_Red_Cube = "LoRA_Pick_Up_Red_Cube"
+    LoRA_place_green_cube_in_red_mug = "LoRA_place_green_cube_in_red_mug"
+
 @dataclasses.dataclass
 class Checkpoint:
     """Load a policy from a trained checkpoint."""
@@ -98,6 +101,7 @@ class Args:
     # Specifies how to load the policy. If not provided, the default policy for the environment will be used.
     policy: Checkpoint | Default = dataclasses.field(default_factory=Default)
 
+TABLE1_LORA = "pi05_All_heads_LoRA",  
 
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
@@ -138,9 +142,28 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/pick_up_red_cube_20_adapted_from_place_marker_in_mug_200/2000",
     ),
     EnvMode.current: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/2000",
+         config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_40_new/3000",
     ),
+
+
+
+    #Table 1
+    #LoRa
+
+    EnvMode.LoRA_Pick_Up_Red_Cube: Checkpoint(
+         config= TABLE1_LORA,
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_pick_up_red_cube_20_new/2999",
+    ),
+    EnvMode.LoRA_place_green_cube_in_red_mug: Checkpoint(
+         config= TABLE1_LORA,
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_green_cube_in_red_bowl_20_new/2999",
+    ),
+
+
+
+    
+    
 
     ########################
     # Simple Tasks Table 1
@@ -170,6 +193,11 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.23_table1_1/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/table1_place_green_cube_in_red_bowl_20/4999",
     ),
+     EnvMode.KNN_pick_up_red_cube: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/11.7/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_40_new/4999",
+    ),
+
 
     ##########Already done
     EnvMode.KNN_pick_up_red_cube: Checkpoint(
