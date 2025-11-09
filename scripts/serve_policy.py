@@ -64,8 +64,21 @@ class EnvMode(enum.Enum):
 
     test = "test"
 
+    # LoRA Table 1
     LoRA_Pick_Up_Red_Cube = "LoRA_Pick_Up_Red_Cube"
     LoRA_place_green_cube_in_red_mug = "LoRA_place_green_cube_in_red_mug"
+    LoRA_press_red_button_hard = "LoRA_press_red_button_hard"
+    LoRA_place_marker_in_mug = "LoRA_place_marker_in_mug"
+
+    #KNN Table 2
+    KNN_T1_place_marker_in_mug = "KNN_T1_place_marker_in_mug"
+    KNN_T1_place_green_cube_in_red_bowl = "KNN_T1_place_green_cube_in_red_bowl"
+    KNN_T1_press_button_hard = "KNN_T1_press_button_hard"
+    KNN_T1_pick_up_red_cube = "KNN_T1_pick_up_red_cube"
+
+
+
+
 
 @dataclasses.dataclass
 class Checkpoint:
@@ -102,6 +115,8 @@ class Args:
     policy: Checkpoint | Default = dataclasses.field(default_factory=Default)
 
 TABLE1_LORA = "pi05_All_heads_LoRA",  
+TABLE1_KNN = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP"
+
 
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
@@ -146,171 +161,195 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_40_new/3000",
     ),
 
-
-
     #Table 1
     #LoRa
-
     EnvMode.LoRA_Pick_Up_Red_Cube: Checkpoint(
          config= TABLE1_LORA,
          dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_pick_up_red_cube_20_new/2999",
     ),
     EnvMode.LoRA_place_green_cube_in_red_mug: Checkpoint(
-         config= TABLE1_LORA,
+         config = TABLE1_LORA[0], 
          dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_green_cube_in_red_bowl_20_new/2999",
     ),
+    EnvMode.LoRA_press_red_button_hard: Checkpoint(
+         config= TABLE1_LORA[0],
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_press_red_button_hard_20_new/2999",
+    ),
+    EnvMode.LoRA_place_marker_in_mug: Checkpoint(
+         config= TABLE1_LORA[0],
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_marker_in_mug_20_new/2999",
+    ),
+
+    #KNN
+    EnvMode.KNN_T1_pick_up_red_cube: Checkpoint(
+         config= "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP", #TABLE1_KNN[0]
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/finetuned_models_table1/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_pick_up_red_cube_20_new/2999",
+    ),
+    EnvMode.KNN_T1_place_marker_in_mug: Checkpoint(
+         config= TABLE1_KNN,
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/finetuned_models_table1/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_20_new/3000",
+    ),
+
+    EnvMode.KNN_T1_place_green_cube_in_red_bowl: Checkpoint(
+         config= TABLE1_KNN,
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/finetuned_models_table1/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_green_cube_in_red_bowl_20_new/2999",
+    ),
+
+    EnvMode.KNN_T1_press_button_hard: Checkpoint(
+         config= TABLE1_KNN,
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/finetuned_models_table1/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_press_red_button_hard_20_new/2999",
+    ),
 
 
+    #Table 2
+   #Single Task Training 
 
+    # ########################
+    # # Simple Tasks Table 1
+    # ##########################
+    # EnvMode.ALL_HEADS_pick_up_red_mug: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_pick_up_red_mug_20/4999",
+    # ),
+    # EnvMode.ALL_HEADS_push_red_bowl_to_red_cup: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_push_red_bowl_to_red_cup_20/4999",
+    # ),
+    # EnvMode.ALL_HEADS_place_green_cube_in_red_bowl: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_place_green_cube_in_red_bowl_20/4999",
+    # ),
+
+    # EnvMode.KNN_pick_up_red_mug: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/table1_pick_up_red_mug_20/4999",
+    # ),
+    # EnvMode.KNN_push_red_bowl_to_red_cup: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_push_red_bowl_to_red_cup_20/4999",
+    # ),
+    # EnvMode.KNN_place_green_cube_in_red_bowl: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.23_table1_1/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/table1_place_green_cube_in_red_bowl_20/4999",
+    # ),
+    #  EnvMode.KNN_pick_up_red_cube: Checkpoint(
+    #     config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/11.7/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_40_new/4999",
+    # ),
+
+
+    # ##########Already done
+    # EnvMode.KNN_pick_up_red_cube: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/pick_up_red_cube_20_from_droid/4999",
+    # ),
     
     
-
-    ########################
-    # Simple Tasks Table 1
-    ##########################
-    EnvMode.ALL_HEADS_pick_up_red_mug: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_pick_up_red_mug_20/4999",
-    ),
-    EnvMode.ALL_HEADS_push_red_bowl_to_red_cup: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_push_red_bowl_to_red_cup_20/4999",
-    ),
-    EnvMode.ALL_HEADS_place_green_cube_in_red_bowl: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/table1_place_green_cube_in_red_bowl_20/4999",
-    ),
-
-    EnvMode.KNN_pick_up_red_mug: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/table1_pick_up_red_mug_20/4999",
-    ),
-    EnvMode.KNN_push_red_bowl_to_red_cup: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_push_red_bowl_to_red_cup_20/4999",
-    ),
-    EnvMode.KNN_place_green_cube_in_red_bowl: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.23_table1_1/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/table1_place_green_cube_in_red_bowl_20/4999",
-    ),
-     EnvMode.KNN_pick_up_red_cube: Checkpoint(
-        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/11.7/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_40_new/4999",
-    ),
-
-
-    ##########Already done
-    EnvMode.KNN_pick_up_red_cube: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/pick_up_red_cube_20_from_droid/4999",
-    ),
+    # EnvMode.ALL_HEAD_pick_up_red_cube: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/All_heads_LoRA/table1_pick_up_red_cube_20/4999",
+    # ),
     
+    # ########################
+    # # Hard Tasks Table 2
+    # ########################
+    # EnvMode.ALL_HEADS_adapted: Checkpoint(
+    #     config="All_heads_LoRA_Adaption",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/9.23_table2/All_heads_LoRA_Adaption/place_green_cube_in_red_bowl_20_adapted_from_place_marker_in_mug_200'/4000",
+    # ),
+    # EnvMode.KNN_adapted: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/9.23_table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/place_green_cube_in_red_bowl_20_from_place_marker_in_mug_200/4000",
+    # ),
+    # ##### Variation Testing
+    # EnvMode.ALL_HEADS_place_marker_in_mug: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/debug_lerobot_all_heads_place_marker_in_mug_200/4999",
+    # ),
+    # EnvMode.KNN_place_marker_in_mug: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999",
+    # ),
+
+    # EnvMode.exp1: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
+    # ),
+    # EnvMode.exp2: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20_from_merged/4999",
+    # ),
+    # EnvMode.exp3: Checkpoint(
+    #     config="All_heads_LoRA",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/All_heads_LoRA/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
+    # ),
+
+
+    # ##################
+    # # Figure 3
+    # #################
+    # EnvMode.V10: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_10/4999",
+    # ),
+    # EnvMode.V40: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_40/4999",
+    # ),
+    # EnvMode.V80: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_80/4999",
+    # ),
+    # EnvMode.V1K: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/1000",
+    # ),
+
+    # #######################
+    # # tABLE 4
+    # #######################
+    # EnvMode.KNN_t4: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_variation",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/table3_ablations/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_variation/place_marker_in_mug_200_freeze_MLP/4999",
+    # ),
+    #  EnvMode.CMA: Checkpoint(
+    #     config="CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.24_table3_1/CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_CMA_heads_place_marker_in_mug_200/4999",
+    # ),
+
+    #  EnvMode.REINFORCE: Checkpoint(
+    #     config="REINFORCE_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.24_table3_1/REINFORCE_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_REINFORCE_heads_place_marker_in_mug_200/4999",
+    # ),
+    #  #######################
+    # # Ablations
+    # #######################
+    # EnvMode.Sanity_Marker_in_Mug: Checkpoint(
+    #     config="Sanity_check_first_20_heads_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/ICLR_Revisions/package/Sanity_check_first_20_heads_freeze_KV_SIGLIP_ActionExpert_MLP/Sanity_check_first_20_heads_place_marker_in_mug_200/4999",
+    # ), 
     
-    EnvMode.ALL_HEAD_pick_up_red_cube: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/All_heads_LoRA/table1_pick_up_red_cube_20/4999",
-    ),
-    
-    ########################
-    # Hard Tasks Table 2
-    ########################
-    EnvMode.ALL_HEADS_adapted: Checkpoint(
-        config="All_heads_LoRA_Adaption",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/9.23_table2/All_heads_LoRA_Adaption/place_green_cube_in_red_bowl_20_adapted_from_place_marker_in_mug_200'/4000",
-    ),
-    EnvMode.KNN_adapted: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/9.23_table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/place_green_cube_in_red_bowl_20_from_place_marker_in_mug_200/4000",
-    ),
-    ##### Variation Testing
-    EnvMode.ALL_HEADS_place_marker_in_mug: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/All_heads_LoRA/debug_lerobot_all_heads_place_marker_in_mug_200/4999",
-    ),
-    EnvMode.KNN_place_marker_in_mug: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/4999",
-    ),
+    # EnvMode.test: Checkpoint(
+    #     config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/ICLR_Revisions/package/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/place_green_cube_in_red_bowl_20_adapted_from_place_marker_in_mug_200_non_overlapping/4999",
+    # ),
 
-    EnvMode.exp1: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
-    ),
-    EnvMode.exp2: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_joint_training/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20_from_merged/4999",
-    ),
-    EnvMode.exp3: Checkpoint(
-        config="All_heads_LoRA",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table2/All_heads_LoRA/joint_training_place_marker_in_mug_20_place_green_cube_in_red_bowl_20/4999",
-    ),
-
-
-    ##################
-    # Figure 3
-    #################
-    EnvMode.V10: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_10/4999",
-    ),
-    EnvMode.V40: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_40/4999",
-    ),
-    EnvMode.V80: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_head_variation/place_marker_in_mug_200_head_80/4999",
-    ),
-    EnvMode.V1K: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/figure3_scaling/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_KNN_heads_place_marker_in_mug_200/1000",
-    ),
-
-    #######################
-    # tABLE 4
-    #######################
-    EnvMode.KNN_t4: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_variation",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/Experiments/table3_ablations/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_variation/place_marker_in_mug_200_freeze_MLP/4999",
-    ),
-     EnvMode.CMA: Checkpoint(
-        config="CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.24_table3_1/CMA_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_CMA_heads_place_marker_in_mug_200/4999",
-    ),
-
-     EnvMode.REINFORCE: Checkpoint(
-        config="REINFORCE_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/9.24_table3_1/REINFORCE_heads_pi0_droid_lerobot_finetune_freeze_KV_SIGLIP_ActionExpert_MLP/debug_lerobot_REINFORCE_heads_place_marker_in_mug_200/4999",
-    ),
-     #######################
-    # Ablations
-    #######################
-    EnvMode.Sanity_Marker_in_Mug: Checkpoint(
-        config="Sanity_check_first_20_heads_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/ICLR_Revisions/package/Sanity_check_first_20_heads_freeze_KV_SIGLIP_ActionExpert_MLP/Sanity_check_first_20_heads_place_marker_in_mug_200/4999",
-    ), 
-    
-    EnvMode.test: Checkpoint(
-        config="KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/ICLR_Revisions/package/KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/place_green_cube_in_red_bowl_20_adapted_from_place_marker_in_mug_200_non_overlapping/4999",
-    ),
-
-    EnvMode.gradient1: Checkpoint(
-        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps/4999",
-    ),
-    EnvMode.gradient2: Checkpoint(
-        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps/4999",
-    ),
-    EnvMode.gradient3: Checkpoint(
-        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps_exclude_KV/4999",
-    ),
-    EnvMode.gradient4: Checkpoint(
-        config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps_exclude_KV/4999",
-    ),
+    # EnvMode.gradient1: Checkpoint(
+    #     config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps/4999",
+    # ),
+    # EnvMode.gradient2: Checkpoint(
+    #     config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps/4999",
+    # ),
+    # EnvMode.gradient3: Checkpoint(
+    #     config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_1000_steps_exclude_KV/4999",
+    # ),
+    # EnvMode.gradient4: Checkpoint(
+    #     config="Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+    #     dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/10.10/table3/Gradient_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_200_normalized_1000_steps_exclude_KV/4999",
+    # ),
 
 
 }
