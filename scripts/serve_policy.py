@@ -70,12 +70,18 @@ class EnvMode(enum.Enum):
     LoRA_press_red_button_hard = "LoRA_press_red_button_hard"
     LoRA_place_marker_in_mug = "LoRA_place_marker_in_mug"
 
-    #KNN Table 2
+    #KNN Table 1
     KNN_T1_place_marker_in_mug = "KNN_T1_place_marker_in_mug"
     KNN_T1_place_green_cube_in_red_bowl = "KNN_T1_place_green_cube_in_red_bowl"
     KNN_T1_press_button_hard = "KNN_T1_press_button_hard"
     KNN_T1_pick_up_red_cube = "KNN_T1_pick_up_red_cube"
 
+    #Table 2
+
+    LoRA_Joint = "LoRA_Joint"
+    KNN_Nonoverlapping = "KNN_Nonoverlapping"
+    KNN_Joint = "KNN_Joint"
+    KNN_Model_Merge = "KNN_Model_Merge"
 
 
 
@@ -202,7 +208,16 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
 
 
     #Table 2
-   #Single Task Training 
+   #Single Task Training Same as KNN/LoRA Place Marker from table 1
+
+   # multitask
+   EnvMode.LoRA_Joint: Checkpoint(
+         config= TABLE1_LORA[0],
+         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_marker_in_mug_20_new/2999",
+    ),
+
+
+
 
     # ########################
     # # Simple Tasks Table 1
