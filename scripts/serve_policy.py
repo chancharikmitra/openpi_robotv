@@ -212,20 +212,20 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
 
    # multitask
    EnvMode.LoRA_Joint: Checkpoint(
-         config= TABLE1_LORA[0],
-         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_marker_in_mug_20_new/2999",
+         config = "pi05_All_heads_LoRA",
+         dir = "/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/LoRA_Multitask_Joint/pi05_All_heads_LoRA/pi05_All_heads_LoRA_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20_new_merged/2999",
     ),
     EnvMode.KNN_Joint:Checkpoint(
-         config= "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
-         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Joint_Selection_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20_new_merged/2999",
+         config = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP",
+         dir = "/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Joint_Selection_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20_new_merged/2999",
     ),
     EnvMode.KNN_Nonoverlapping: Checkpoint(
-         config= "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
-         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Nonoverlapping_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/pi05_KNN_place_green_cube_in_red_bowl_20_new_adaption_non_overlapping/2999",
+         config = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption",
+         dir = "/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Nonoverlapping_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_Adaption/pi05_KNN_place_green_cube_in_red_bowl_20_new_adaption_non_overlapping/2999"
     ),
     EnvMode.KNN_Model_Merge: Checkpoint(
-         config= "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid",
-         dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Model_Merge_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid/pi05_KNN_place_markerin_mug_20_new_place_green_cube_in_red_bowl_20_new_model_merge/2999",
+         config = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid",
+         dir = '/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Model_Merge_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid/pi05_KNN_place_markerin_mug_20_new_place_green_cube_in_red_bowl_20_new_model_merge/2999"
     ),
 
     # ########################
