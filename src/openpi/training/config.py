@@ -764,16 +764,16 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20",
+            repo_id="yusenluo9z/new_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
             ),
-            assets=AssetsConfig(
-                # Important: reuse the original DROID norm stats during fine-tuning!
-                assets_dir="gs://openpi-assets/checkpoints/pi05_droid/assets",
-                asset_id="droid",
-            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi05_droid/assets",
+            #     asset_id="droid",
+            # ),
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, pi05=True, action_dim=32,
@@ -1140,7 +1140,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/new_place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1187,7 +1187,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/new_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1255,7 +1255,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20",
+            repo_id="yusenluo9z/droid",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,

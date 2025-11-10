@@ -225,7 +225,7 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
     ),
     EnvMode.KNN_Model_Merge: Checkpoint(
          config = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid",
-         dir = '/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Model_Merge_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid/pi05_KNN_place_markerin_mug_20_new_place_green_cube_in_red_bowl_20_new_model_merge/2999"
+         dir = "/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/pi05_ckpts/table2/Model_Merge_KNN_Multitask/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_droid/pi05_KNN_place_markerin_mug_20_new_place_green_cube_in_red_bowl_20_new_model_merge/2999"
     ),
 
     # ########################
