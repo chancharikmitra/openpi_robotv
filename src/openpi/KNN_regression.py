@@ -42,8 +42,7 @@ TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 HEAD_SELECTION_MODE = "topk"      # "topk" | "best_add" | "reinforce" | "learn_weights"
 TARGET_HEADS        = 20          # target number of heads (not used for learn_weights)
 # ---- Optional: exclude specific heads from final selection ----
-EXCLUDED_HEADS: List[int] = []    # any head indices to exclude from final selection
-
+EXCLUDED_HEADS: List[int] = []
 # Utilities to normalize excluded head formats
 def _to_flat_head_index(item) -> Optional[int]:
     """
@@ -543,7 +542,7 @@ def evaluate_custom_heads_on_k_grid(
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_pick_up_red_cube_20.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
+    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0_pick_up_red_cube_20_new_state.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]

@@ -307,31 +307,55 @@ def _verify_lora(params_base: dict, params_tuned: dict, trainable_heads: list[tu
     return all_ok
 
 
-def _verify_non_attention_modules(params_base: dict, params_tuned: dict) -> bool:
+def _verify_non_attention_modules(params_base: dict, params_tuned: dict, is_pi05: bool = False, expect_frozen: bool = False) -> bool:
     """Check whether non-attention projection/MLP modules changed.
-
-    This verifies top-level modules outside PaliGemma LLM tree:
-      - action_in_proj, action_out_proj, action_time_mlp_in, action_time_mlp_out, state_proj
-    Expectation for strict head-only runs (only_attention=True): they should remain unchanged.
+    
+    Args:
+        params_base: Base checkpoint parameters
+        params_tuned: Tuned checkpoint parameters
+        is_pi05: Whether the model is pi05
+        expect_frozen: If True, expects these modules to be frozen (returns False if changed).
+                      If False, only reports status (always returns True for info).
     """
     print("\n=== Subtree change check: Non-attention modules ===")
-    modules = [
-        "action_in_proj",
-        "action_out_proj",
-        "action_time_mlp_in",
-        "action_time_mlp_out",
-        "state_proj",
-    ]
+    if not expect_frozen:
+        print("NOTE: These modules are expected to be TRAINED with freeze_mlp=False")
+    
+    if is_pi05:
+        modules = [
+            "action_in_proj",
+            "action_out_proj",
+            "time_mlp_in",      # pi05特有
+            "time_mlp_out",     # pi05特有
+        ]
+    else:
+        modules = [
+            "action_in_proj",
+            "action_out_proj",
+            "action_time_mlp_in",  # pi0特有
+            "action_time_mlp_out", # pi0特有
+            "state_proj",          # pi0特有
+        ]
 
     all_ok = True
     for name in modules:
         base_sub = _get_subtree(params_base, name)
         tuned_sub = _get_subtree(params_tuned, name)
         diff = _max_abs_diff_subtree(base_sub, tuned_sub)
+        if base_sub is None:
+            print(f"{name}: NOT FOUND")
+            continue
         print(f"{name} max|Δ|: {diff:.6e}")
         if diff > CHANGE_DIFF_THRESH:
-            print(f"  [WARN] {name} changed (>{CHANGE_DIFF_THRESH:.1e})")
-            all_ok = False
+            if expect_frozen:
+                print(f"  [WARN] {name} changed but expected frozen (>{CHANGE_DIFF_THRESH:.1e})")
+                all_ok = False
+            else:
+                print(f"  [INFO] {name} changed as expected (trainable)")
+        else:
+            if not expect_frozen:
+                print(f"  [WARN] {name} did not change but expected to be trained")
+    
     return all_ok
 
 def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
@@ -383,40 +407,71 @@ def _verify_siglip_and_expert(params_base: dict, params_tuned: dict) -> bool:
 
     return all_ok
 
-def _verify_mlp_parts(params_base: dict, params_tuned: dict) -> bool:
-    """Report max|Δ| for MLP (FFN) parts under main LLM: mlp and mlp_1."""
+def _verify_mlp_parts(params_base: dict, params_tuned: dict, expect_frozen: bool = False) -> bool:
+    """Report max|Δ| for MLP (FFN) parts under main LLM: mlp and mlp_1.
+    
+    Args:
+        params_base: Base checkpoint parameters
+        params_tuned: Tuned checkpoint parameters
+        expect_frozen: If True, expects MLP to be frozen (returns False if changed).
+                      If False, expects MLP to be trained (reports if unchanged).
+    """
     print("\n=== Subtree change check: LLM MLP parts (mlp, mlp_1) ===")
+    if not expect_frozen:
+        print("NOTE: MLP modules are expected to be TRAINED with freeze_mlp=False")
+    
     base_mlp = _get_subtree(params_base, "PaliGemma/llm/layers/mlp")
     tuned_mlp = _get_subtree(params_tuned, "PaliGemma/llm/layers/mlp")
     diff_mlp = _max_abs_diff_subtree(base_mlp, tuned_mlp)
     print(f"mlp max|Δ|: {diff_mlp:.6e}")
+    
+    if diff_mlp > CHANGE_DIFF_THRESH:
+        if expect_frozen:
+            print(f"  [WARN] mlp changed but expected frozen")
+        else:
+            print(f"  [INFO] mlp changed as expected (trainable)")
+    else:
+        if not expect_frozen:
+            print(f"  [WARN] mlp did not change but expected to be trained")
 
     base_mlp1 = _get_subtree(params_base, "PaliGemma/llm/layers/mlp_1")
     tuned_mlp1 = _get_subtree(params_tuned, "PaliGemma/llm/layers/mlp_1")
     diff_mlp1 = _max_abs_diff_subtree(base_mlp1, tuned_mlp1)
     print(f"mlp_1 max|Δ|: {diff_mlp1:.6e}")
+    
+    if diff_mlp1 > CHANGE_DIFF_THRESH:
+        print(f"  [INFO] mlp_1 is part of Action Expert, should be frozen")
+        # mlp_1 is part of Expert, should always be frozen
+        return False if diff_mlp1 > CHANGE_DIFF_THRESH else True
+    else:
+        print(f"  [PASS] mlp_1 frozen as expected")
 
-    # Not gating overall success here as expectation (freeze vs train) depends on config.
+    # Always return True for informational purposes unless mlp_1 changed
     return True
 
 def main():
     # --- Configuration ---
     # Optional: set mode to "full" or "lora"
-    mode = "lora"
+    mode = "full"
+    
+    # Set to False if you're training MLP and adapter modules (freeze_mlp=False in config)
+    # Set to True if you're freezing them (freeze_mlp=True in config)
+    expect_mlp_frozen = False  # User's config: freeze_mlp=False, so MLP should be trained
+    
     if mode == "lora":
         config_name = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP"
         exp_name = "place_marker_in_mug_20"
         base_step = 1000
         tuned_step = 4999
-    # else:
-    #     config_name = "pi0_fast_droid_h5_head_tune_debug"
-    #     exp_name = "head_tune_debug_mask"
-    #     base_step = 1
-    #     tuned_step = 3
+    else:
+        config_name = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_FFT"
+        exp_name = "FFT_place_marker_in_mug_20_new"
+        base_step = 1000
+        tuned_step = 2999
 
     trainable_heads=[
-                (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
-                (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6), 
             ] #KNN, K=30, state token for: place marker in mug  20
 
     untrained_head_to_check = (8, 8)
@@ -432,13 +487,23 @@ def main():
         return
 
     if mode == "lora":
-        ok_lora = _verify_lora(params_base, params_tuned, trainable_heads, untrained_head_to_check)
+        ok_attn = _verify_lora(params_base, params_tuned, trainable_heads, untrained_head_to_check)
         ok_sigexp = _verify_siglip_and_expert(params_base, params_tuned)
-        ok_nonattn = _verify_non_attention_modules(params_base, params_tuned)
-        ok_mlp = _verify_mlp_parts(params_base, params_tuned)
-        ok = ok_lora and ok_sigexp and ok_nonattn and ok_mlp
+        ok_nonattn = _verify_non_attention_modules(params_base, params_tuned, is_pi05=True, expect_frozen=expect_mlp_frozen)
+        ok_mlp = _verify_mlp_parts(params_base, params_tuned, expect_frozen=expect_mlp_frozen)
+        ok = ok_attn and ok_sigexp and ok_nonattn and ok_mlp
     else:
-        ok = _verify_full(params_base, params_tuned, trainable_heads, untrained_head_to_check)
+        # FFT mode: also check non-attention modules
+        ok_attn = _verify_full(params_base, params_tuned, trainable_heads, untrained_head_to_check)
+        ok_sigexp = _verify_siglip_and_expert(params_base, params_tuned)
+        ok_nonattn = _verify_non_attention_modules(params_base, params_tuned, is_pi05=True, expect_frozen=expect_mlp_frozen)
+        ok_mlp = _verify_mlp_parts(params_base, params_tuned, expect_frozen=expect_mlp_frozen)
+        print("\n--- Combined verification results ---")
+        print(f"  Attention heads: {'✅ PASS' if ok_attn else '❌ FAIL'}")
+        print(f"  SIGLIP & Expert: {'✅ PASS' if ok_sigexp else '❌ FAIL'}")
+        print(f"  Non-attn modules: {'✅ PASS' if ok_nonattn else '❌ FAIL'}")
+        print(f"  MLP status: {'✅ PASS' if ok_mlp else '❌ FAIL'}")
+        ok = ok_attn and ok_sigexp and ok_nonattn and ok_mlp
 
     print("\n--- Final summary ---")
     if ok:

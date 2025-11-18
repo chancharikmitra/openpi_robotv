@@ -52,8 +52,8 @@ def load_state_heads_and_actions(
                 frame_group = episode_group[frame_key]
                 
                 # Load activations - expecting shape (18, 8, 256)
-                if "state_token_attn" in frame_group:
-                    attn = frame_group["state_token_attn"][:]
+                if "first_action_token_attn" in frame_group:
+                    attn = frame_group["first_action_token_attn"][:]
                     all_activations.append(attn)
                 
                 # Load actions
@@ -80,17 +80,17 @@ def compute_baseline_state_mean(
     baseline_attn_h5: str,
     baseline_episodes: Optional[List[str]] = None,
 ) -> np.ndarray:
-    """Compute per-head baseline mean at state position across keyframes.
+    """Compute per-head baseline mean at first action position across keyframes.
 
     Returns: (18, 8, 256)
     """
     print("Computing baseline mean activations...")
     # Support two formats:
-    # 1) Aggregated baseline H5 with root dataset 'state_token_attn' (mean already)
-    # 2) Per-episode H5 (task/episode/frame_*/state_token_attn), compute mean over frames
+    # 1) Aggregated baseline H5 with root dataset 'first_action_token_attn' (mean already)
+    # 2) Per-episode H5 (task/episode/frame_*/first_action_token_attn), compute mean over frames
     with h5py.File(baseline_attn_h5, "r") as f:
-        if "state_token_attn" in f and isinstance(f["state_token_attn"], h5py.Dataset):
-            mean_activations = f["state_token_attn"][:].astype(np.float32)
+        if "first_action_token_attn" in f and isinstance(f["first_action_token_attn"], h5py.Dataset):
+            mean_activations = f["first_action_token_attn"][:].astype(np.float32)
             num_frames = int(f.attrs.get("num_frames", -1))
             print(f"Baseline dataset (aggregated): frames={num_frames} mean_shape={mean_activations.shape}")
             return mean_activations
@@ -99,9 +99,9 @@ def compute_baseline_state_mean(
     with h5py.File(baseline_attn_h5, "r") as f:
         if baseline_episodes is None:
             baseline_episodes = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys() if isinstance(f[task], h5py.Group)]
-    state_heads, _, _, _ = load_state_heads_and_actions(baseline_attn_h5, baseline_episodes)
-    mean_activations = np.mean(state_heads, axis=0)
-    print(f"Baseline dataset: {state_heads.shape[0]} frames")
+    first_action_tokens, _, _, _ = load_state_heads_and_actions(baseline_attn_h5, baseline_episodes)
+    mean_activations = np.mean(first_action_tokens, axis=0)
+    print(f"Baseline dataset: {first_action_tokens.shape[0]} frames")
     print(f"Mean activations shape: {mean_activations.shape}")
     return mean_activations
 
@@ -430,41 +430,41 @@ def build_baseline_h5_from_multiple(
                     if not frame_key.startswith("frame_"):
                         continue
                     fr = grp[frame_key]
-                    if "state_token_attn" not in fr:
+                    if "first_action_token_attn" not in fr:
                         continue
-                    attn = fr["state_token_attn"][:].astype(np.float64)  # (18,8,256)
+                    attn = fr["first_action_token_attn"][:].astype(np.float64)  # (18,8,256)
                     sum_heads += attn
                     sumsq_heads += attn * attn
                     total_frames += 1
 
     if total_frames == 0:
-        raise ValueError("No state_token_attn found across provided H5s.")
+        raise ValueError("No first_action_token_attn found across provided H5s.")
 
     mean = (sum_heads / total_frames).astype(np.float32)
     var = np.maximum(0.0, (sumsq_heads / total_frames) - (sum_heads / total_frames) ** 2)
     std = np.sqrt(var).astype(np.float32)
 
     with h5py.File(output_h5_path, "w") as out:
-        out.create_dataset("state_token_attn", data=mean, compression="gzip")
+        out.create_dataset("first_action_token_attn", data=mean, compression="gzip")
         out.attrs["num_frames"] = int(total_frames)
         out.attrs["sources"] = np.array(input_h5_paths, dtype=h5py.string_dtype())
 
 
 # Example usage
 if __name__ == "__main__":
-    # import openpi.training.config as config
-    # from openpi.shared import download
-    # from openpi.policies import policy_config
+    import openpi.training.config as config
+    from openpi.shared import download
+    from openpi.policies import policy_config
     # # Paths to your data
     
-    # TASK_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_marker_in_mug_20_state_first_action.h5"
-    # config = config.get_config("pi0_droid")
-    # checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
-    # # Ensure normalization assets are present (includes droid/norm_stats.json)
-    # download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
+    TASK_ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_place_marker_in_mug_20.h5"
+    config = config.get_config("pi05_droid")
+    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid")
+    # Ensure normalization assets are present (includes droid/norm_stats.json)
+    download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid/assets")
 
-    # # Create a trained policy.
-    # policy = policy_config.create_trained_policy(config, checkpoint_dir)
+    # Create a trained policy.
+    policy = policy_config.create_trained_policy(config, checkpoint_dir)
     # Run CMA head selection
     # selected_heads = causal_mediation_head_selection(
     #     baseline_attn_h5=BASELINE_ATTN_H5,
@@ -473,28 +473,24 @@ if __name__ == "__main__":
     # )
     build_baseline_h5_from_multiple(
     [
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_mug_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_green_cube_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_pick_up_red_cube_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_place_green_cube_in_red_bowl_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_cloth_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_wipe_table_with_yellow_cloth_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_remove_marker_from_mug_20_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_press_the_button_hard_50_state_first_action.h5",
-        "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/PI0DROID_push_red_bowl_to_red_cup_50_state_first_action.h5",
+        "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_pick_up_red_mug_20.h5",
+        "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_place_green_cube_in_red_bowl_20.h5",
+        "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_press_the_button_hard_20.h5",
+        "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_push_red_bowl_to_red_cup_20.h5",
+        "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_pick_up_red_cube_20.h5",
     ],
-    "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state_place_marker_in_mug_200.h5",
+    "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_CMA_baseline_agg_first_action.h5",
     )
-    # BASELINE_ATTN_H5 = "/scr2/yusenluo/openpi_debug/openpi/attention_dataset/CMA_baseline_agg_state_place_marker_in_mug_200.h5"
-    # selected_heads = causal_mediation_head_selection(
-    # baseline_attn_h5=BASELINE_ATTN_H5,
-    # task_attn_h5=TASK_ATTN_H5,
-    # policy=policy,                            # 已创建好的 policy
-    # raw_h5_path="/scr2/yusenluo/openpi_debug/openpi/on_robot_dataset/centercropped/place_marker_in_mug_200.h5",    # 就是 generate_activation 使用的原始 h5
-    # prompt_text="place marker in mug",     # 与生成时一致
-    # delta_token_index=0,                      # 注入 state
-    # num_heads=20,                          # 可选限量
-    # max_frames=300,
-    # )
+    BASELINE_ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0.5_CMA_baseline_agg_first_action.h5"
+    selected_heads = causal_mediation_head_selection(
+    baseline_attn_h5=BASELINE_ATTN_H5,
+    task_attn_h5=TASK_ATTN_H5,
+    policy=policy,                            # 已创建好的 policy (pi05)
+    raw_h5_path="/home/yusenluo/openpi_robotv/9_21/place_marker_in_mug_20.h5",    # 就是 generate_activation 使用的原始 h5
+    prompt_text="place marker in mug",     # 与生成时一致
+    delta_token_index=0,                      # pi05: 注入到第一个 action token (pi05 无 state token)
+    num_heads=20,                          # 可选限量
+    max_frames=300,
+    )
     
     # print(f"\nSelected heads: {selected_heads}")

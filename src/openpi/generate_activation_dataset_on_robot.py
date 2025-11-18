@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
         return x
 # ---------------------------------- Output configuration ----------------------------------
 # Change this path if you want to write to a different location
-ATTN_H5_PATH = "attention_dataset/pi0.5_pick_up_red_cube_20.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+ATTN_H5_PATH = "attention_dataset/pi0_pick_up_red_cube_20_new_state.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 200
 USE_KEYFRAME = True
@@ -32,10 +32,10 @@ from openpi.policies import policy_config
 from openpi.shared import download
 
 if not APPEND_ACTION_LABELS_ONLY:
-    config = config.get_config("pi05_droid")
-    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid")
+    config = config.get_config("pi0_droid")
+    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
     # Ensure normalization assets are present (includes droid/norm_stats.json)
-    download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid/assets")
+    download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
 
     # Create a trained policy.
     policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0DROID Module instance (no weights)
@@ -143,7 +143,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
         # 3) fallback: infer from group name
         lower = name.lower()
-        m = re.search(r"pick[-_ ]up[-_ ]red[-_ ]cube", lower)
+        m = re.search(r"push[-_ ]red[-_ ]cup[-_ ]to[-_ ]red[-_ ]bowl", lower)
         if m:
             return "pick up red cube"
         base = name.replace("-", " ").replace("_", " ")
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/home/yusenluo/openpi_robotv/pick_up_red_cube_20.h5"
+h5_path = "/home/yusenluo/openpi_robotv/transfer_11.7/pick_up_red_cube_20_new.h5"
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
