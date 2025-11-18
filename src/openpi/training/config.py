@@ -677,47 +677,7 @@ _CONFIGS = [
         num_train_steps=30_000,
     ),
 
-    # Fine-tuning on custom LeRobot dataset converted from single H5
-    TrainConfig(
-        name="pi0_fast_droid_lerobot_finetune_green_cube",
-        model=pi0_fast.Pi0FASTConfig(
-            action_dim=8,
-            action_horizon=16,
-            max_token_len=180,
-            paligemma_variant="gemma_2b_lora",
-        ),
-        data=LeRobotDROIDDataConfig(
-            # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/pick_up_green_cube_20",
-            base_config=DataConfig(
-                # Load prompt from the dataset's `task` field
-                prompt_from_task=True,
-            ),
-            # assets=AssetsConfig(
-            #     # Important: reuse the original DROID norm stats during fine-tuning!
-            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
-            #     asset_id="droid",
-            # ),
-        ),
-        freeze_filter=pi0_fast.Pi0FASTConfig(
-            action_dim=8, action_horizon=16, max_token_len=180, paligemma_variant="gemma_2b_lora"
-        ).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_fast_droid/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=1000,
-            peak_lr=2.5e-5,
-            decay_steps=25000,
-            decay_lr=2.5e-6,
-        ),
-        num_train_steps=25000,
-        batch_size=32,
-        num_workers=8,
-        log_interval=100,
-        save_interval=1000,
-        keep_period=1000,
-        ema_decay=None,
-    ),
-    
+    # Fine-tuning on custom LeRobot dataset converted from single H5 
     TrainConfig(
         name="All_heads_LoRA",
         model=pi0_config.Pi0Config(
@@ -726,7 +686,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20_place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/new_pick_up_red_cube_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -764,7 +724,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/new_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/new_place_marker_in_mug_1",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -783,12 +743,49 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=3000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
         batch_size=32,
-        num_workers=7,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
+        name="pi05_All_heads_FFT",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/new_press_red_button_hard_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+            # assets=AssetsConfig(
+            #     # Important: reuse the original DROID norm stats during fine-tuning!
+            #     assets_dir="gs://openpi-assets/checkpoints/pi05_droid/assets",
+            #     asset_id="droid",
+            # ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=3000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=3000,
+        batch_size=32,
+        num_workers=8,
         log_interval=100,
         save_interval=1000,
         keep_period=1000,
@@ -885,44 +882,6 @@ _CONFIGS = [
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/All_heads_LoRA/debug_lerobot_all_heads_place_marker_in_mug_200/4999/params"),
-        lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=200,
-            peak_lr=2.5e-5,
-            decay_steps=5000,
-            decay_lr=2.5e-6,
-        ),
-        num_train_steps=5000,
-        batch_size=32,
-        num_workers=8,
-        log_interval=100,
-        save_interval=1000,
-        keep_period=1000,
-        ema_decay=None,
-    ),
-
-    TrainConfig(
-        name="pi0_droid_lerobot_finetune_freeze_SIGLIP_ActionExpert",
-        model=pi0_config.Pi0Config(
-            action_horizon=16,
-            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
-        ),
-        data=LeRobotDROIDDataConfig(
-            # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/remove_marker_from_mug_20",
-            base_config=DataConfig(
-                # Load prompt from the dataset's `task` field
-                prompt_from_task=True,
-            ),
-            # assets=AssetsConfig(
-            #     # Important: reuse the original DROID norm stats during fine-tuning!
-            #     assets_dir="gs://openpi-assets/checkpoints/pi0_fast_droid/assets",
-            #     asset_id="droid",
-            # ),
-        ),
-        freeze_filter=pi0_config.Pi0Config(
-            action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
-        ).get_freeze_filter_always_freeze_expert_and_siglip(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_droid/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
@@ -1154,23 +1113,27 @@ _CONFIGS = [
             #     (7, 0), (10, 2), (7, 5), (7, 6), (8, 7), (10, 1), (11, 7), (3, 6), (11, 5), (10, 6), 
             #     (10, 7), (6, 6), (10, 4), (11, 2), (6, 1), (2, 1), (1, 5), (4, 5), (7, 4), (8, 1)
             # ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 non-overlapping heads
+            # trainable_head_indices=[
+            #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
+            #     (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            # ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 same heads
             trainable_head_indices=[
-                (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
-                (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
-            ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 same heads
+                (0, 0), (7, 5), (6, 3), (3, 6), (2, 0), (10, 4), (4, 6), (11, 7), (10, 6), (1, 5),
+                (3, 3), (4, 2), (12, 0), (3, 0), (4, 3), (10, 1), (11, 4), (10, 7), (2, 1), (3, 5)
+            ] #KNN, K=20, first action token for: place green cube in red bowl adapted from place marker in mug 20 non-overlapping heads new!!!
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, pi05=True, action_dim=32,
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter_always_freeze_expert_and_siglip(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/place_marker_in_mug_20/4999/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("checkpoints/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP/pi05_KNN_place_marker_in_mug_20_new/3000/params"),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=3000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
@@ -1187,7 +1150,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/new_place_marker_in_mug_20_new_place_green_cube_in_red_bowl_20",
+            repo_id="yusenluo9z/new_place_marker_in_mug_1",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1209,10 +1172,10 @@ _CONFIGS = [
             #     (3, 2), (3, 1), (8, 4), (2, 6), (4, 4), (5, 7), (0, 0), (5, 5), (1, 6), (4, 5), 
             #     (4, 7), (6, 3), (7, 1), (5, 3), (4, 3), (1, 5), (2, 0), (9, 7), (10, 2), (2, 1)
             # ] #KNN, K=30, state token for: press the button hard 20
-            trainable_head_indices=[
-                (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
-                (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
-            ] #KNN, K=20, state token for: place green cube in red bowl 20
+            # trainable_head_indices=[
+            #     (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
+            #     (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
+            # ] #KNN, K=20, state token for: place green cube in red bowl 20
             # trainable_head_indices=[
             #     (8, 4), (7, 1), (9, 7), (8, 5), (9, 4), (2, 0), (3, 2), (9, 5), (9, 1), (3, 1), 
             #     (9, 2), (4, 4), (10, 1), (12, 0), (4, 2), (9, 0), (7, 5), (12, 6), (4, 7), (10, 2)
@@ -1225,6 +1188,30 @@ _CONFIGS = [
             #     (8, 4), (1, 1), (9, 7), (3, 6), (10, 3), (13, 4), (17, 1), (4, 2), (0, 4), (12, 3),
             #     (15, 1), (13, 3), (4, 6), (2, 1), (17, 6), (13, 7), (5, 4), (5, 6), (10, 6), (11, 1)
             # ] # CMA, 300 frames, place marker in mug 20
+            # trainable_head_indices=[
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            #     (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6)
+            # ] #KNN, K=30, state token for: place marker in mug  40 new!!!
+            # trainable_head_indices=[
+            #     (7, 1), (5, 7), (3, 1), (5, 5), (4, 4), (3, 2), (9, 0), (9, 7), (9, 1), (8, 4),
+            #     (9, 2), (8, 5), (9, 4), (2, 6), (7, 0), (0, 0), (7, 6), (9, 5), (3, 6), (11, 7)
+            # ] #KNN, K=30, state token for: place green cube in red bowl  20 new!!!
+            # trainable_head_indices=[
+            #     (3, 2), (4, 4), (5, 7), (4, 7), (3, 1), (2, 6), (8, 4), (4, 5), (2, 2), (5, 3),
+            #     (5, 5), (7, 1), (9, 7), (3, 0), (1, 5), (1, 6), (2, 0), (2, 1), (3, 6), (0, 0)
+            # ] #KNN, K=30, state token for: press red button hard  20 new!!!
+            # trainable_head_indices=[
+            #     (8, 4), (7, 1), (9, 7), (8, 5), (9, 2), (5, 7), (4, 4), (3, 1), (2, 6), (5, 5),
+            #     (9, 4), (10, 1), (4, 7), (1, 5), (9, 0), (3, 2), (9, 1), (4, 6), (7, 6), (2, 0)
+            # ] #KNN, K=30, state token for: pick up red cube  20 new!!!
+            # trainable_head_indices=[
+            #     (5, 5), (5, 7), (4, 4), (8, 4), (9, 2), (9, 0), (3, 1), (3, 2), (7, 1), (9, 7),
+            #     (9, 5), (8, 5), (9, 1), (4, 6), (5, 3), (9, 4), (7, 0), (0, 0), (10, 4), (3, 6)
+            # ] #KNN, K=30, state token for: place marker in mug  20 and place green cube in red bowl 20 new!!!
+            # trainable_head_indices=[
+            #     (9, 0), (8, 5), (8, 4), (2, 2), (7, 0), (11, 4), (15, 3), (12, 4), (6, 6), (15, 7),
+            #     (9, 2), (10, 7), (6, 1), (8, 7), (17, 0), (14, 3), (17, 4), (15, 4), (8, 2), (15, 1)
+            # ] #KNN, K=30, state token for: push red cup to red bowl  20 new!!!
 
         ),
         freeze_filter=pi0_config.Pi0Config(
@@ -1235,10 +1222,72 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=3000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
+    TrainConfig(
+        name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_FFT",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+        ),
+        data=LeRobotDROIDDataConfig(
+            # Replace with your actual LeRobot repo id produced by the converter
+            repo_id="yusenluo9z/new_press_red_button_hard_20",
+            base_config=DataConfig(
+                # Load prompt from the dataset's `task` field
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            # trainable_head_indices=[
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            #     (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6)
+            # ] #KNN, K=30, state token for: place marker in mug  40 new!!!
+            # trainable_head_indices=[
+            #     (7, 1), (5, 7), (3, 1), (5, 5), (4, 4), (3, 2), (9, 0), (9, 7), (9, 1), (8, 4),
+            #     (9, 2), (8, 5), (9, 4), (2, 6), (7, 0), (0, 0), (7, 6), (9, 5), (3, 6), (11, 7)
+            # ] #KNN, K=30, state token for: place green cube in red bowl  20 new!!!
+            trainable_head_indices=[
+                (3, 2), (4, 4), (5, 7), (4, 7), (3, 1), (2, 6), (8, 4), (4, 5), (2, 2), (5, 3),
+                (5, 5), (7, 1), (9, 7), (3, 0), (1, 5), (1, 6), (2, 0), (2, 1), (3, 6), (0, 0)
+            ] #KNN, K=30, state token for: press red button hard  20 new!!!
+            # trainable_head_indices=[
+            #     (8, 4), (7, 1), (9, 7), (8, 5), (9, 2), (5, 7), (4, 4), (3, 1), (2, 6), (5, 5),
+            #     (9, 4), (10, 1), (4, 7), (1, 5), (9, 0), (3, 2), (9, 1), (4, 6), (7, 6), (2, 0)
+            # ] #KNN, K=30, state token for: pick up red cube  20 new!!!
+            # trainable_head_indices=[
+            #     (5, 5), (5, 7), (4, 4), (8, 4), (9, 2), (9, 0), (3, 1), (3, 2), (7, 1), (9, 7),
+            #     (9, 5), (8, 5), (9, 1), (4, 6), (5, 3), (9, 4), (7, 0), (0, 0), (10, 4), (3, 6)
+            # ] #KNN, K=30, state token for: place marker in mug  20 and place green cube in red bowl 20 new!!!
+            # trainable_head_indices=[
+            #     (9, 0), (8, 5), (8, 4), (2, 2), (7, 0), (11, 4), (15, 3), (12, 4), (6, 6), (15, 7),
+            #     (9, 2), (10, 7), (6, 1), (8, 7), (17, 0), (14, 3), (17, 4), (15, 4), (8, 2), (15, 1)
+            # ] #KNN, K=30, state token for: push red cup to red bowl  20 new!!!
+
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=3000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=3000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
@@ -1255,7 +1304,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/droid",
+            repo_id="yusenluo9z/new_place_green_cube_in_red_bowl_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1270,15 +1319,22 @@ _CONFIGS = [
             freeze_kv=True,
             only_attention=False,
             freeze_mlp=False,
-            trainable_head_indices=[
-                (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
-                (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
-            ] #KNN, K=30, state token for: place marker in mug  20
+            # trainable_head_indices=[
+            #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
+            #     (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3)
+            # ] #KNN, K=30, state token for: place marker in mug  20
             # trainable_head_indices=[
             #     (7, 0), (7, 1), (9, 7), (3, 2), (10, 2), (9, 0), (7, 5), (5, 7), (5, 3), (5, 5), 
             #     (8, 5), (7, 6), (8, 4), (3, 1), (9, 2), (8, 7), (9, 4), (4, 4), (10, 1), (11, 7)
             # ] #KNN, K=20, state token for: place green cube in red bowl 20
-
+            # trainable_head_indices=[
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            #     (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6)
+            # ] #KNN, K=30, state token for: place marker in mug  20 new!!!
+            trainable_head_indices=[
+                (7, 1), (5, 7), (3, 1), (5, 5), (4, 4), (3, 2), (9, 0), (9, 7), (9, 1), (8, 4),
+                (9, 2), (8, 5), (9, 4), (2, 6), (7, 0), (0, 0), (7, 6), (9, 5), (3, 6), (11, 7)
+            ] #KNN, K=30, state token for: place green cube in red bowl  20 new!!!
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, pi05=True, action_dim=32,
@@ -1288,10 +1344,10 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=3000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
@@ -1354,7 +1410,7 @@ _CONFIGS = [
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/place_marker_in_mug_20",
+            repo_id="yusenluo9z/new_place_marker_in_mug_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1368,21 +1424,24 @@ _CONFIGS = [
             #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4)
             # ] #KNN, K=30, state token for: place marker in mug  20
             # trainable_head_indices=[
-            #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
-            #     (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3), 
-            #     (3, 6), (7, 0), (10, 4), (7, 6), (10, 1), (3, 0), (10, 7), (3, 3), (4, 5), (11, 5), 
-            #     (7, 4), (0, 0), (2, 2), (12, 6), (10, 6), (6, 1), (7, 5), (11, 2), (10, 5), (6, 7)
-            # ] #KNN, K=30, state token for: place marker in mug  20
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1)
+            # ] #KNN, K=30, state token for: place marker in mug  20 10 heads new!!!
             # trainable_head_indices=[
-            #     (5, 7), (3, 2), (7, 1), (4, 6), (3, 1), (9, 2), (8, 4), (9, 7), (2, 6), (4, 4), 
-            #     (9, 4), (9, 1), (5, 3), (9, 0), (5, 5), (4, 7), (8, 6), (9, 5), (8, 5), (6, 3), 
-            #     (3, 6), (7, 0), (10, 4), (7, 6), (10, 1), (3, 0), (10, 7), (3, 3), (4, 5), (11, 5), 
-            #     (7, 4), (0, 0), (2, 2), (12, 6), (10, 6), (6, 1), (7, 5), (11, 2), (10, 5), (6, 7), 
-            #     (10, 2), (12, 0), (11, 1), (8, 3), (8, 7), (4, 2), (6, 6), (1, 6), (2, 0), (2, 1), 
-            #     (8, 1), (11, 7), (9, 6), (10, 3), (3, 4), (11, 4), (4, 0), (2, 3), (2, 5), (5, 1), 
-            #     (3, 5), (5, 4), (1, 5), (0, 7), (5, 0), (2, 7), (10, 0), (9, 3), (1, 2), (3, 7), 
-            #     (5, 2), (4, 1), (11, 6), (7, 3), (6, 4), (1, 7), (2, 4), (4, 3), (11, 3), (8, 0)
-            # ] #KNN, K=30, state token for: place marker in mug  20
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            #     (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6), 
+            #     (4, 5), (10, 6), (6, 3), (4, 6), (3, 6), (3, 0), (10, 1), (3, 3), (10, 4), (12, 6), 
+            #     (7, 5), (8, 7), (10, 2), (6, 6), (11, 1), (10, 7), (6, 7), (11, 4), (7, 4), (11, 2)
+            # ] #KNN, K=30, state token for: place marker in mug  20 40 heads new!!!
+            # trainable_head_indices=[
+            #     (9, 2), (3, 2), (5, 7), (9, 1), (8, 4), (5, 5), (9, 7), (9, 4), (8, 5), (7, 1), 
+            #     (9, 5), (9, 0), (4, 4), (3, 1), (5, 3), (4, 7), (8, 6), (2, 6), (7, 0), (7, 6), 
+            #     (4, 5), (10, 6), (6, 3), (4, 6), (3, 6), (3, 0), (10, 1), (3, 3), (10, 4), (12, 6), 
+            #     (7, 5), (8, 7), (10, 2), (6, 6), (11, 1), (10, 7), (6, 7), (11, 4), (7, 4), (11, 2), 
+            #     (2, 2), (2, 1), (8, 1), (6, 1), (11, 7), (2, 0), (3, 5), (5, 4), (0, 0), (8, 3), 
+            #     (10, 5), (12, 0), (1, 5), (4, 2), (4, 3), (3, 4), (11, 6), (1, 2), (11, 5), (9, 6), 
+            #     (3, 7), (8, 0), (9, 3), (5, 1), (4, 0), (1, 6), (1, 3), (11, 3), (0, 7), (2, 5), 
+            #     (2, 3), (6, 0), (7, 2), (6, 2), (2, 7), (10, 3), (5, 0), (10, 0), (1, 1), (5, 2)
+            # ] #KNN, K=30, state token for: place marker in mug  20 80 heads new!!!
             trainable_head_indices=[
                 (layer, head) 
                 for layer in range(18) 
@@ -1398,10 +1457,10 @@ _CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=200,
             peak_lr=2.5e-5,
-            decay_steps=5000,
+            decay_steps=3000,
             decay_lr=2.5e-6,
         ),
-        num_train_steps=5000,
+        num_train_steps=3000,
         batch_size=32,
         num_workers=8,
         log_interval=100,
@@ -1521,7 +1580,7 @@ TrainConfig(
         ),
         data=LeRobotDROIDDataConfig(
             # Replace with your actual LeRobot repo id produced by the converter
-            repo_id="yusenluo9z/press_the_button_hard_20",
+            repo_id="yusenluo9z/new_pick_up_red_cube_20",
             base_config=DataConfig(
                 # Load prompt from the dataset's `task` field
                 prompt_from_task=True,
@@ -1544,10 +1603,10 @@ TrainConfig(
             #     (1, 2), (2, 3), (11, 4), (17, 3), (17, 6), (11, 3), (2, 7), (13, 1), (3, 7), (11, 7), 
             #     (1, 4), (1, 5), (0, 5), (14, 1), (14, 7), (1, 1), (15, 0), (11, 0), (14, 2), (4, 0)
             # ] #KNN, K=40, state token for: place marker in mug  200
-            trainable_head_indices=[
-                (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
-                (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
-            ] #KNN, K=40, state token for: press the button hard  50
+            # trainable_head_indices=[
+            #     (4, 0), (1, 1), (3, 7), (2, 3), (16, 7), (11, 0), (3, 5), (1, 4), (5, 1), (5, 5), 
+            #     (3, 1), (5, 7), (2, 6), (1, 5), (1, 2), (16, 0), (11, 4), (11, 2), (13, 1), (16, 1)
+            # ] #KNN, K=40, state token for: press the button hard  50
             # trainable_head_indices=[
             #     (16, 5), (2, 3), (11, 7), (17, 6), (16, 6), (5, 7), (11, 4), (11, 0), (16, 4), (16, 7), 
             #     (16, 1), (13, 2), (11, 6), (4, 0), (1, 4), (2, 7), (13, 5), (16, 0), (16, 2), (13, 7)
@@ -1560,6 +1619,26 @@ TrainConfig(
             #     (11, 4), (1, 1), (2, 7), (2, 3), (7, 4), (11, 0), (15, 5), (1, 5), (4, 7), (4, 0), 
             #     (16, 2), (3, 1), (3, 3), (11, 6), (16, 3), (3, 7), (14, 6), (13, 1), (2, 0), (1, 4)
             # ] #KNN, K=20, state token for: place green cube in red bowl  20
+            # trainable_head_indices=[
+            #     (14, 5), (1, 4), (16, 5), (16, 6), (15, 6), (3, 7), (17, 3), (14, 2), (2, 3), (17, 0),
+            #     (3, 2), (13, 4), (13, 2), (11, 3), (17, 7), (13, 1), (13, 5), (0, 4), (1, 1), (15, 3)
+            # ] #KNN, K=30, state token for: place marker in mug  20 new!!!
+            # trainable_head_indices=[
+            #     (13, 1), (16, 0), (16, 1), (15, 0), (1, 1), (16, 2), (16, 5), (16, 7), (17, 6), (13, 6),
+            #     (2, 7), (4, 0), (16, 4), (17, 7), (11, 7), (10, 2), (14, 7), (5, 0), (14, 1), (16, 6)
+            # ] #KNN, K=30, state token for: place green cube in red bowl  20 new!!!
+            # trainable_head_indices=[
+            #     (3, 7), (2, 3), (1, 4), (1, 5), (16, 7), (1, 1), (2, 7), (5, 1), (1, 2), (13, 3),
+            #     (16, 5), (11, 0), (11, 3), (16, 2), (11, 4), (17, 6), (3, 5), (11, 2), (17, 7), (10, 1)
+            # ] #KNN, K=30, state token for: press red button hard  20 new!!!
+            # trainable_head_indices=[
+            #     (13, 3), (7, 0), (0, 1), (16, 5), (10, 0), (2, 6), (0, 2), (6, 0), (0, 4), (16, 3),
+            #     (16, 2), (15, 3), (13, 0), (8, 1), (11, 2), (17, 5), (9, 3), (8, 6), (2, 0), (4, 0)
+            # ] #KNN, K=30, state token for: push red cup to red bowl  20 new!!!
+            trainable_head_indices=[
+                (10, 3), (1, 2), (5, 6), (10, 2), (2, 7), (11, 4), (4, 0), (3, 7), (2, 0), (1, 5),
+                (2, 3), (9, 1), (1, 1), (5, 7), (4, 7), (6, 6), (17, 6), (1, 4), (5, 0), (2, 6)
+            ] #KNN, K=30, state token for: pick up red cube  20 new!!!
         ),
         freeze_filter=pi0_config.Pi0Config(
             action_horizon=16, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
