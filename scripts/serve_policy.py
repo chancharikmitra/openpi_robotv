@@ -83,6 +83,8 @@ class EnvMode(enum.Enum):
     KNN_Joint = "KNN_Joint"
     KNN_Model_Merge = "KNN_Model_Merge"
 
+    x = "x"
+
 
 
 
@@ -126,6 +128,17 @@ TABLE1_KNN = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP"
 
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
+
+    EnvMode.x: Checkpoint(
+        config="pi05_All_heads_FFT",
+        dir="/darrell_robotics/raj_home/rtv/openpi_robotv/checkpoints/supp/All_Heads/pi05_All_heads_FFT/pi05_All_heads_FFT_place_marker_in_mug_20_new/2999",
+    ),
+
+    # EnvMode.ALOHA: Checkpoint(
+    #     config="pi05_aloha",
+    #     dir="gs://openpi-assets/checkpoints/pi05_base",
+    # ),
+
     EnvMode.ALOHA: Checkpoint(
         config="pi05_aloha",
         dir="gs://openpi-assets/checkpoints/pi05_base",
