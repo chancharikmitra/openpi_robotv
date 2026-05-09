@@ -52,7 +52,23 @@ class Config:
     lora_configs: dict[str, lora.LoRAConfig] = dataclasses.field(default_factory=dict)
 
 
-Variant = Literal["dummy", "gemma_300m", "gemma_300m_lora", "gemma_2b", "gemma_2b_lora"]
+Variant = Literal[
+    "dummy",
+    "gemma_300m",
+    "gemma_300m_lora",
+    "gemma_300m_lora_r4",
+    "gemma_300m_lora_r8",
+    "gemma_300m_lora_r16",
+    "gemma_300m_lora_r32",
+    "gemma_300m_lora_r64",
+    "gemma_2b",
+    "gemma_2b_lora",
+    "gemma_2b_lora_r4",
+    "gemma_2b_lora_r8",
+    "gemma_2b_lora_r16",
+    "gemma_2b_lora_r32",
+    "gemma_2b_lora_r64",
+]
 
 
 def get_config(variant: Variant) -> Config:
@@ -95,6 +111,18 @@ def get_config(variant: Variant) -> Config:
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=16, alpha=16.0), "ffn": lora.LoRAConfig(rank=16, alpha=16.0)},
         )
+    # gemma_2b LoRA ablation variants (rank=4/8/16/32/64, alpha=rank)
+    if variant in ("gemma_2b_lora_r4", "gemma_2b_lora_r8", "gemma_2b_lora_r16", "gemma_2b_lora_r32", "gemma_2b_lora_r64"):
+        rank = int(variant.split("_r")[-1])
+        return Config(
+            width=2048,
+            depth=18,
+            mlp_dim=16_384,
+            num_heads=8,
+            num_kv_heads=1,
+            head_dim=256,
+            lora_configs={"attn": lora.LoRAConfig(rank=rank, alpha=float(rank)), "ffn": lora.LoRAConfig(rank=rank, alpha=float(rank))},
+        )
     if variant == "gemma_300m_lora":
         # 311M params
         return Config(
@@ -105,6 +133,18 @@ def get_config(variant: Variant) -> Config:
             num_kv_heads=1,
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=32, alpha=32.0), "ffn": lora.LoRAConfig(rank=32, alpha=32.0)},
+        )
+    # gemma_300m LoRA ablation variants (rank=4/8/16/32/64, alpha=rank)
+    if variant in ("gemma_300m_lora_r4", "gemma_300m_lora_r8", "gemma_300m_lora_r16", "gemma_300m_lora_r32", "gemma_300m_lora_r64"):
+        rank = int(variant.split("_r")[-1])
+        return Config(
+            width=1024,
+            depth=18,
+            mlp_dim=4096,
+            num_heads=8,
+            num_kv_heads=1,
+            head_dim=256,
+            lora_configs={"attn": lora.LoRAConfig(rank=rank, alpha=float(rank)), "ffn": lora.LoRAConfig(rank=rank, alpha=float(rank))},
         )
     raise ValueError(f"Unknown variant: {variant}")
 

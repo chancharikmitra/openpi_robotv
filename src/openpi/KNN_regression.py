@@ -14,10 +14,23 @@ from sklearn.cross_decomposition import PLSRegression
 # --------------------------
 # Basic configuration
 # --------------------------
-NUM_LAYERS   = 18
-HEADS_PER_L  = 8
-H            = NUM_LAYERS * HEADS_PER_L   # 144
-D_HEAD       = 256
+# UNIT_MODE = "head"  -> 144 heads, each 256-D (original behavior)
+# UNIT_MODE = "layer" -> 18 layers, each = concat of its 8 heads (2048-D)
+import os as _os
+UNIT_MODE = _os.environ.get("KNN_UNIT_MODE", "layer").strip()
+if UNIT_MODE not in ("layer", "head"):
+    raise ValueError(f"KNN_UNIT_MODE must be 'layer' or 'head', got {UNIT_MODE!r}")
+
+if UNIT_MODE == "layer":
+    NUM_LAYERS   = 18
+    HEADS_PER_L  = 1                 # one "unit" per layer; reshape collapses 8*256 -> 2048
+    H            = 18
+    D_HEAD       = 8 * 256           # 2048
+else:
+    NUM_LAYERS   = 18
+    HEADS_PER_L  = 8
+    H            = NUM_LAYERS * HEADS_PER_L   # 144
+    D_HEAD       = 256
 
 # Metric scope:
 #   - "per_episode": fit metric on train subset for each fold (strict, slower)
@@ -40,7 +53,10 @@ TEMP_EXCL_W  = 30                # LOFO temporal exclusion window (±W frames)
 
 # ---- Head selection mode and target ----
 HEAD_SELECTION_MODE = "topk"      # "topk" | "best_add" | "reinforce" | "learn_weights"
-TARGET_HEADS        = 20          # target number of heads (not used for learn_weights)
+# In "layer" mode this is the number of layers to select; in "head" mode it's heads.
+TARGET_HEADS        = int(_os.environ.get(
+    "KNN_TARGET", 3 if UNIT_MODE == "layer" else 20
+))
 # ---- Optional: exclude specific heads from final selection ----
 EXCLUDED_HEADS: List[int] = []
 # Utilities to normalize excluded head formats
@@ -186,7 +202,8 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
     excluded_set = _normalize_excluded_heads(excluded_heads)
     # Build preprocessed dataset
     preprocessed_data = build_dataset(
-        attn_h5, episodes, use_pca=USE_PCA, use_zscore=USE_ZSCORE, pca_components=PCA_D
+        attn_h5, episodes, use_pca=USE_PCA, use_zscore=USE_ZSCORE, pca_components=PCA_D,
+        num_layers=NUM_LAYERS, heads_per_layer=HEADS_PER_L, d_head=D_HEAD,
     )
     d_per_head = preprocessed_data.Xh_red.shape[-1]
 
@@ -198,7 +215,7 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         pre_obj=preprocessed_data, metric_scope=METRIC_SCOPE,
         use_fullspace=GLOBAL_METRIC_FULLSPACE, H=H,
         metric_ctx_cache=_METRIC_CTX_CACHE, metric_ctx_fullspace=_METRIC_CTX_FULLSPACE,
-        print_rankings=PRINT_HEAD_RANKINGS
+        print_rankings=PRINT_HEAD_RANKINGS, unit_mode=UNIT_MODE,
     )
 
     # Helper: enforce excluded heads and top-up from rankings
@@ -411,9 +428,11 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         print(f"Per-k MSE -> {per_k_str}")
 
     # Print training configuration summary
+    unit_word = "layers" if UNIT_MODE == "layer" else "heads"
     print("================ Train Config ================")
+    print(f"Unit mode            : {UNIT_MODE} (H={H}, d_per_unit={D_HEAD})")
     print(f"Selection mode       : {selection_mode}")
-    print(f"Target heads         : {TARGET_HEADS}")
+    print(f"Target {unit_word:14s}: {TARGET_HEADS}")
     print(f"K grid               : {K_GRID}")
     print(f"Best k               : {best_k_value}")
     print(f"Metric               : {DIST_METRIC} (scope={METRIC_SCOPE}, fullspace={GLOBAL_METRIC_FULLSPACE})")
@@ -427,8 +446,12 @@ def fit_knn_reg_with_heads(attn_h5: str, episodes: List[str], selection_mode: st
         print(f"PLS components       : {PLS_COMPONENTS}")
     print(f"Temporal excl window : {TEMP_EXCL_W}")
     if len(excluded_set) > 0:
-        print(f"Excluded heads       : {sorted(list(excluded_set))}")
-    print(f"Selected heads ({len(selected_heads)}): {selected_heads}")
+        print(f"Excluded {unit_word:11s}: {sorted(list(excluded_set))}")
+    print(f"Selected {unit_word} ({len(selected_heads)}): {selected_heads}")
+    if UNIT_MODE == "layer":
+        # Equivalent flat head IDs (each layer expands to its 8 heads)
+        equiv_heads = [l*8 + h for l in selected_heads for h in range(8)]
+        print(f"  -> equivalent head IDs ({len(equiv_heads)}): {equiv_heads}")
     print(f"LOEO-CV MSE          : {cross_val_mse:.6f}")
     print("==============================================")
     return trained_model, training_info
@@ -486,10 +509,11 @@ def evaluate_custom_heads_on_k_grid(
     
     # 1) 构建预处理数据集
     preprocessed_data = build_dataset(
-        attn_h5, episodes, 
-        use_pca=use_pca, 
-        use_zscore=use_zscore, 
-        pca_components=pca_d
+        attn_h5, episodes,
+        use_pca=use_pca,
+        use_zscore=use_zscore,
+        pca_components=pca_d,
+        num_layers=NUM_LAYERS, heads_per_layer=HEADS_PER_L, d_head=D_HEAD,
     )
     
     # 2) 构建全局度量上下文（如果需要）
@@ -542,7 +566,11 @@ def evaluate_custom_heads_on_k_grid(
 
 
 if __name__ == "__main__":
-    ATTN_H5 = "/home/yusenluo/openpi_robotv/attention_dataset/pi0_pick_up_red_cube_20_new_state.h5" #attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
+    ATTN_H5 = _os.environ.get(
+        "KNN_ATTN_H5",
+        "/scr2/yusenluo/openpi_robotv/temp_data/pick_up_red_cube_pi05_action.h5",
+    )  # attention_dataset/PI0DROID_place_marker_in_mug_200_state_first_action.h5
+    KNN_OUT_TXT = _os.environ.get("KNN_OUT_TXT")
     # ATTN_H5_EVAL = "/scr2/yusenluo/openpi_robotv/src/openpi/pick_eval_attention_last_token_keyframe_positive_with_action.h5"
     with h5py.File(ATTN_H5, "r") as f:
         all_eps = [f"{task}/{ep}" for task in f.keys() for ep in f[task].keys()]
@@ -553,7 +581,25 @@ if __name__ == "__main__":
 
     # 示例1: 训练完整模型
     model, info = fit_knn_reg_with_heads(ATTN_H5, all_eps, selection_mode=HEAD_SELECTION_MODE)
-    
+
+    # ---- Convert selection to (layer, head) tuples (HEADS_PER_L=8 inside layer) ----
+    if UNIT_MODE == "layer":
+        trainable_head_indices = [(int(l), int(h)) for l in info["selected_heads"] for h in range(8)]
+    else:
+        trainable_head_indices = [(int(idx) // 8, int(idx) % 8) for idx in info["selected_heads"]]
+    print(f"[KNN] UNIT_MODE={UNIT_MODE} ATTN_H5={ATTN_H5}")
+    print(f"[KNN] selected_units = {info['selected_heads']}")
+    print(f"[KNN] best_k         = {info['best_k']}  cv_mse = {info['cv_mse']:.6f}")
+    print(f"trainable_head_indices={trainable_head_indices}")
+    if KNN_OUT_TXT:
+        with open(KNN_OUT_TXT, "w") as _fout:
+            _fout.write(f"UNIT_MODE={UNIT_MODE}\n")
+            _fout.write(f"ATTN_H5={ATTN_H5}\n")
+            _fout.write(f"TARGET={TARGET_HEADS}  best_k={info['best_k']}  cv_mse={info['cv_mse']:.6f}\n")
+            _fout.write(f"selected_units={info['selected_heads']}\n")
+            _fout.write(f"trainable_head_indices={trainable_head_indices}\n")
+        print(f"[KNN] wrote {KNN_OUT_TXT}")
+
     # 示例2: 评估自定义头列表
     # 你可以在这里指定你想要评估的头列表
     # custom_heads_example = [92, 139, 142, 91, 23, 105, 31, 95, 113, 119,120, 88, 114, 32] #[10, 19, 92, 139, 142, 91, 23, 105, 31, 95,12, 13, 5, 113, 119, 9, 120, 88, 114, 32]  # 示例头列表

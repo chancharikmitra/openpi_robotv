@@ -88,9 +88,20 @@ def rank_single_heads_per_k(
     metric_ctx_cache: dict,
     metric_ctx_fullspace: dict,
     print_all_scores: bool = True,
+    unit_mode: str = "head",
 ) -> List[Tuple[float, int]]:
-    """Rank single heads for a specific k value. Returns [(mse, head_id), ...]"""
+    """Rank single heads for a specific k value. Returns [(mse, head_id), ...].
+
+    unit_mode: "head" prints per-head labels (LxHy); "layer" prints per-layer labels.
+    """
     scores: List[Tuple[float, int]] = []
+    is_layer = unit_mode == "layer"
+    unit_word = "Layer" if is_layer else "Head"
+
+    def _label(idx: int) -> str:
+        if is_layer:
+            return f"Layer {idx:2d}"
+        return f"Head {idx:3d} (L{idx//8:2d}H{idx%8})"
 
     # Lazy import to avoid circular dependency
     from .metrics import build_global_metric_ctx_for_heads
@@ -106,7 +117,7 @@ def rank_single_heads_per_k(
             metric_ctx_fullspace=metric_ctx_fullspace,
         )
 
-    print(f"\n=== Single Head Ranking for k={k} ===")
+    print(f"\n=== Single {unit_word} Ranking for k={k} ===")
     for h in range(H):
         if metric_scope == "global" and metric in {"whiten", "proj", "pls"}:
             assert pre_obj is not None
@@ -139,33 +150,29 @@ def rank_single_heads_per_k(
         scores.append((float(mse), h))
         
         if print_all_scores:
-            layer = h // 8
-            head_in_layer = h % 8
-            print(f"Head {h:3d} (L{layer:2d}H{head_in_layer}): MSE = {mse:.6f}")
-    
+            print(f"{_label(h)}: MSE = {mse:.6f}")
+
     scores.sort(key=lambda x: x[0])
-    
+
     if print_all_scores:
-        print(f"\n=== Top 20 Heads for k={k} ===")
-        for i, (mse, h) in enumerate(scores[:20]):
-            layer = h // 8
-            head_in_layer = h % 8
-            print(f"Rank {i+1:2d}: Head {h:3d} (L{layer:2d}H{head_in_layer}), MSE = {mse:.6f}")
-        
-        print(f"\n=== Bottom 20 Heads for k={k} ===")
-        for i, (mse, h) in enumerate(scores[-20:]):
-            layer = h // 8
-            head_in_layer = h % 8
-            rank = len(scores) - 20 + i + 1
-            print(f"Rank {rank:2d}: Head {h:3d} (L{layer:2d}H{head_in_layer}), MSE = {mse:.6f}")
-        
+        top_n = min(20, len(scores))
+        print(f"\n=== Top {top_n} {unit_word}s for k={k} ===")
+        for i, (mse, h) in enumerate(scores[:top_n]):
+            print(f"Rank {i+1:2d}: {_label(h)}, MSE = {mse:.6f}")
+
+        bot_n = min(20, len(scores))
+        print(f"\n=== Bottom {bot_n} {unit_word}s for k={k} ===")
+        for i, (mse, h) in enumerate(scores[-bot_n:]):
+            rank = len(scores) - bot_n + i + 1
+            print(f"Rank {rank:2d}: {_label(h)}, MSE = {mse:.6f}")
+
         # Print MSE statistics
         mse_values = [mse for mse, _ in scores]
         best_mse = min(mse_values)
         worst_mse = max(mse_values)
         median_mse = np.median(mse_values)
         mean_mse = np.mean(mse_values)
-        
+
         print(f"\n=== MSE Statistics for k={k} ===")
         print(f"Best MSE:   {best_mse:.6f}")
         print(f"Worst MSE:  {worst_mse:.6f}")
@@ -194,14 +201,17 @@ def rank_single_heads(
     metric_ctx_cache: dict,
     metric_ctx_fullspace: dict,
     print_rankings: bool = True,
+    unit_mode: str = "head",
 ) -> dict:
     """Return rankings per k: {k: [(mse, head_id), ...]}"""
     rankings_per_k = {}
-    for k in tqdm(k_grid, desc="Single-head ranking per k"):
+    desc = "Single-layer ranking per k" if unit_mode == "layer" else "Single-head ranking per k"
+    for k in tqdm(k_grid, desc=desc):
         rankings_per_k[k] = rank_single_heads_per_k(
             per_head_features, actions, episode_ids, frame_ids, k, metric, temp_excl_w,
             pca_dim, proj_alpha, pre_obj, metric_scope, use_fullspace, H,
-            metric_ctx_cache, metric_ctx_fullspace, print_all_scores=print_rankings
+            metric_ctx_cache, metric_ctx_fullspace,
+            print_all_scores=print_rankings, unit_mode=unit_mode,
         )
     return rankings_per_k
 
@@ -765,16 +775,16 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
     attention_list, action_list = [], []
     for frame_key in _iter_frame_keys(group):
         frame_group = group[frame_key]
-        if "state_token_attn" not in frame_group:
-            raise KeyError(f"{episode_key}/{frame_key} missing 'state_token_attn'")
-        attention = _coerce_float32(np.asarray(frame_group["state_token_attn"]))   # (18,8,256)
+        if "first_action_token_attn" not in frame_group:
+            raise KeyError(f"{episode_key}/{frame_key} missing 'first_action_token_attn'")
+        attention = _coerce_float32(np.asarray(frame_group["first_action_token_attn"]))   # (18,8,256)
 
-        # 优先读取新结构中的 action_label (8,)
+        # 优先读取新结构中的 action_label (8 for droid, 7 for libero, ...)
         if "action_label" in frame_group:
             action = _coerce_float32(np.asarray(frame_group["action_label"]))
             action = action.reshape(-1)
-            if action.size != 8:
-                raise ValueError(f"{episode_key}/{frame_key} 'action_label' must have 8 elements, got {action.shape}")
+            if action.size == 0:
+                raise ValueError(f"{episode_key}/{frame_key} 'action_label' empty")
 
         # 回退到旧结构 joint_velocity(7)+gripper_position(1)
         elif "joint_velocity" in frame_group and "gripper_position" in frame_group:
@@ -968,7 +978,7 @@ __all__ += [
     "compute_loeo_mse_torch_with_metric",
     "load_episode_frames",
     "frame_to_vec",
-    "build_dataset", 
+    "build_dataset",
     "transform_frame",
     "transform_episode",
     "HeadPreprocessor",

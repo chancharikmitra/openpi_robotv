@@ -16,8 +16,19 @@ except Exception:  # pragma: no cover
     def tqdm(x, **kwargs):
         return x
 # ---------------------------------- Output configuration ----------------------------------
-# Change this path if you want to write to a different location
-ATTN_H5_PATH = "attention_dataset/pi0_pick_up_red_cube_20_new_state.h5" # "wipe_eval_attention_last_token_single_action_negative.h5"
+# Task name selects input/output paths and prompt. Override with env TASK.
+TASK = os.environ.get("TASK", "push_button_hard").strip()
+_TASK_PROMPTS = {
+    "push_button_hard": "push button hard",
+    "pick_up_red_cube": "pick up red cube",
+}
+TASK_PROMPT = os.environ.get("TASK_PROMPT", _TASK_PROMPTS.get(TASK, TASK.replace("_", " ")))
+INPUT_H5_PATH = os.environ.get(
+    "INPUT_H5", f"/scr2/yusenluo/openpi_robotv/temp_data/{TASK}_20.h5"
+)
+ATTN_H5_PATH = os.environ.get(
+    "ATTN_H5", f"/scr2/yusenluo/openpi_robotv/temp_data/{TASK}_pi05_action.h5"
+)
 # Max number of episodes to process (across all tasks)
 MAX_EPISODES = 200
 USE_KEYFRAME = True
@@ -32,10 +43,11 @@ from openpi.policies import policy_config
 from openpi.shared import download
 
 if not APPEND_ACTION_LABELS_ONLY:
-    config = config.get_config("pi0_droid")
-    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid")
+    os.environ.setdefault("OPENPI_DATA_HOME", "/scr2/yusenluo/openpi_robotv/.cache/openpi")
+    config = config.get_config("pi05_droid")
+    checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid")
     # Ensure normalization assets are present (includes droid/norm_stats.json)
-    download.maybe_download("gs://openpi-assets/checkpoints/pi0_droid/assets")
+    download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid/assets")
 
     # Create a trained policy.
     policy = policy_config.create_trained_policy(config, checkpoint_dir)      # Pi0DROID Module instance (no weights)
@@ -166,7 +178,7 @@ def extract_observations(h5_path, max_episodes: int | None = None):
 
             # prompt as task_name key; if FORCED_PROMPT is set, override
             # prompt_text = extract_instruction_from_group(episode_name, grp)
-            prompt_text = "pick up red cube"
+            prompt_text = TASK_PROMPT
             # forced_prompt = os.environ.get("FORCED_PROMPT", "").strip()
             # if forced_prompt:
             #     prompt_text = forced_prompt
@@ -268,7 +280,10 @@ if __name__ == "__main__":
         sys.exit(0)
 
 # Usage
-h5_path = "/home/yusenluo/openpi_robotv/transfer_11.7/pick_up_red_cube_20_new.h5"
+h5_path = INPUT_H5_PATH
+print(f"[generate_activation] TASK={TASK} prompt={TASK_PROMPT!r}")
+print(f"[generate_activation] input  h5: {h5_path}")
+print(f"[generate_activation] output h5: {ATTN_H5_PATH}")
 dataset = extract_observations(h5_path, max_episodes=MAX_EPISODES)
 
 # Iterate and run inference, printing progress
