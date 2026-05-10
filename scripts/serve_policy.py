@@ -85,6 +85,13 @@ class EnvMode(enum.Enum):
 
     x = "x"
 
+    # ECCV Rebuttal Ablations
+    pi05_All_heads_LoRA_pick_up_red_cube_rank_32 = "pi05_All_heads_LoRA_pick_up_red_cube_rank_32"
+    pi05_All_heads_LoRA_push_button_hard_rank_32 = "pi05_All_heads_LoRA_push_button_hard_rank_32"
+    pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_layer = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_layer"
+    pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_rank_32 = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_rank_32"
+    pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer"
+    pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32 = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32"
 
 
 
@@ -128,6 +135,32 @@ TABLE1_KNN = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP"
 
 # Default checkpoints that should be used for each environment.
 DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
+
+    # ECCV 2026 Ablations
+    EnvMode.pi05_All_heads_LoRA_pick_up_red_cube_rank_32: Checkpoint(
+        config="pi05_All_heads_LoRA_pick_up_red_cube_rank_32",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_All_heads_LoRA_pick_up_red_cube_rank_32/all_heads_lora_pick_up_red_cube_rank_32/2999",
+    ),
+    EnvMode.pi05_All_heads_LoRA_push_button_hard_rank_32: Checkpoint(
+        config="pi05_All_heads_LoRA_push_button_hard_rank_32",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_All_heads_LoRA_push_button_hard_rank_32/all_heads_lora_push_button_hard_rank_32/2999",
+    ),
+    EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_layer: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_layer",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_layer/pick_up_red_cube_layer/2999",
+    ),
+    EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_rank_32: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_rank_32",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_pick_up_red_cube_rank_32/pick_up_red_cube_rank_32/2999",
+    ),
+    EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer/push_button_hard_layer/2999",
+    ),
+    EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32/push_button_hard_rank_32/2999",
+    ),
 
     EnvMode.x: Checkpoint(
         config="pi05_All_heads_FFT",
