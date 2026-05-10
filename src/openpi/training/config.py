@@ -819,6 +819,38 @@ _CONFIGS = [
         ema_decay=None,
     ),
 
+    TrainConfig(
+        name="pi05_All_heads_LoRA_swap_green_red_cube",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="yusenluo9z/swap_green_red_cube_20",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=3000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=3000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
+
     # ---- Libero (pi05/pi0) full-LoRA finetune on a single-task 20-ep subset ----
     # Mirrors pi05_libero / pi0_libero_low_mem_finetune (base ckpt + matching action_horizon),
     # plus the KNN-recipe hparams (3000 steps, batch=32, cosine LR) used for 20-ep subsets.
@@ -1356,6 +1388,45 @@ _CONFIGS = [
         keep_period=1000,
         ema_decay=None,
     ),
+    TrainConfig(
+        name="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube",
+        model=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="yusenluo9z/swap_green_red_cube_20",
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        optimizer=_optimizer.AdamWForHeadTuning(
+            freeze_kv=True,
+            only_attention=False,
+            freeze_mlp=False,
+            trainable_head_indices=[(9,7), (9,4), (8,4), (9,2), (5,7), (7,6), (8,5), (9,1), (7,1), (1,5),
+             (3,2), (9,0), (3,1), (9,5), (1,6), (4,7), (7,0), (8,6), (5,3), (1,3)] #KNN head mode, target=20, swap_green_red_cube_20 (mp4 left-half, best_k=30, cv_mse=0.021498)
+
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            action_horizon=16, pi05=True, action_dim=32,
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter_always_freeze_expert_and_siglip(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=200,
+            peak_lr=2.5e-5,
+            decay_steps=3000,
+            decay_lr=2.5e-6,
+        ),
+        num_train_steps=3000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=100,
+        save_interval=1000,
+        keep_period=1000,
+        ema_decay=None,
+    ),
 
     # ---- Libero (pi05/pi0) selected-heads finetune on libero10_task0_20 ----
     TrainConfig(
@@ -1410,8 +1481,8 @@ _CONFIGS = [
             freeze_kv=True,
             only_attention=False,
             freeze_mlp=False,
-            trainable_head_indices=[(1, 7), (6, 0), (5, 5), (17, 0), (6, 7), (15, 2), (2, 1), (6, 5), (7, 2), (16, 4),
-             (17, 5), (7, 0), (17, 1), (7, 1), (2, 6), (10, 2), (10, 7), (2, 0), (10, 3), (16, 0)],  # KNN head mode, target=20, libero10_task0_20 (best_k=20, cv_mse=0.009988)
+            trainable_head_indices=[(7, 1), (8, 2), (7, 6), (6, 0), (6, 4), (7, 4), (8, 3), (6, 3), (6, 2), (6, 1),
+             (8, 6), (8, 7), (4, 1), (11, 3), (11, 0), (9, 7), (5, 4), (5, 5), (9, 3), (5, 0)],  # KNN head mode, target=20, libero10_task0_20 pi0 activation (best_k=40, cv_mse=0.019135)
         ),
         freeze_filter=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
