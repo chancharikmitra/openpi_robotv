@@ -93,6 +93,9 @@ class EnvMode(enum.Enum):
     pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_layer"
     pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32 = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32"
 
+    # ECCV 2026 Long Horizon
+    pi05_All_heads_LoRA_swap_green_red_cube = "pi05_All_heads_LoRA_swap_green_red_cube"
+    pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube = "pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube"
 
 
 @dataclasses.dataclass
@@ -160,6 +163,16 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
     EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32: Checkpoint(
         config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32",
         dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/ablations/eccv_rebuttal_policies/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_push_button_hard_rank_32/push_button_hard_rank_32/2999",
+    ),
+
+    # ECCV 2026 Long Horizon
+    EnvMode.pi05_All_heads_LoRA_swap_green_red_cube: Checkpoint(
+        config="pi05_All_heads_LoRA_swap_green_red_cube",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/Long_horizon/pi05_All_heads_LoRA_swap_green_red_cube/pi05_All_heads_LoRA_swap_green_red_cube/2999",
+    ),
+    EnvMode.pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube: Checkpoint(
+        config="pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube",
+        dir="/darrell_robotics/raj_home/rtv/eccv26_rtv/0_policies/Long_horizon/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube/pi05_KNN_heads_robo_steering_freeze_KV_SIGLIP_ActionExpert_MLP_swap_green_red_cube/2999",
     ),
 
     EnvMode.x: Checkpoint(
