@@ -51,6 +51,7 @@ def make_head_tuning_config(
     repo_id: str,
     heads: HeadsInput,
     *,
+    benchmark: str = "droid",
     num_train_steps: int = 3000,
     peak_lr: float = 2.5e-5,
     pi05: bool = True,
@@ -62,7 +63,7 @@ def make_head_tuning_config(
     name:
         Unique config name (used as the experiment identifier).
     repo_id:
-        HuggingFace ``username/dataset`` for the LeRobot DROID dataset to
+        HuggingFace ``username/dataset`` for the LeRobot dataset to
         fine-tune on.
     heads:
         Specifies which attention heads to train.  Accepts:
@@ -72,6 +73,17 @@ def make_head_tuning_config(
           :mod:`openpi.head_tuning.select` containing a
           ``"trainable_head_indices"`` key whose value is a list of
           ``[layer, head]`` pairs.
+    benchmark:
+        Target benchmark / data loader.  Determines both the data config class
+        and the base checkpoint URL:
+
+        * ``"droid"`` (default): uses :class:`LeRobotDROIDDataConfig`; loads
+          ``gs://openpi-assets/checkpoints/pi05_droid/params`` (pi05=True) or
+          ``gs://openpi-assets/checkpoints/pi0_droid/params`` (pi05=False).
+        * ``"libero"``: uses :class:`LeRobotLiberoDataConfig` with
+          ``extra_delta_transform=True``; loads
+          ``gs://openpi-assets/checkpoints/pi05_libero/params`` (pi05=True) or
+          ``gs://openpi-assets/checkpoints/pi0_base/params`` (pi05=False).
     num_train_steps:
         Total number of gradient steps.  Defaults to ``3000``.
     peak_lr:
@@ -79,9 +91,10 @@ def make_head_tuning_config(
         ``2.5e-5``.
     pi05:
         If ``True`` (default), build a **pi05** model
-        (``action_dim=32, action_horizon=16``).  Set to ``False`` to build a
-        vanilla pi0 model (``action_horizon=16``); note that the DROID
-        checkpoint URL is not changed automatically in that case.
+        (``action_dim=32, action_horizon=16``) and use the pi05 checkpoint for
+        the selected benchmark.  Set to ``False`` to build a vanilla pi0 model
+        (``action_horizon=16``) and use the pi0 checkpoint for the selected
+        benchmark.
 
     Returns
     -------
@@ -113,7 +126,7 @@ def make_head_tuning_config(
     ]
 
     # ------------------------------------------------------------------ #
-    # Model config                                                          #
+    # Model config and checkpoint URL                                       #
     # ------------------------------------------------------------------ #
     if pi05:
         model_cfg = _pi0_config.Pi0Config(
@@ -123,14 +136,41 @@ def make_head_tuning_config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
         )
-        checkpoint_url = "gs://openpi-assets/checkpoints/pi05_droid/params"
+        _ckpt_by_benchmark = {
+            "droid": "gs://openpi-assets/checkpoints/pi05_droid/params",
+            "libero": "gs://openpi-assets/checkpoints/pi05_libero/params",
+        }
     else:
         model_cfg = _pi0_config.Pi0Config(
             action_horizon=16,
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
         )
-        checkpoint_url = "gs://openpi-assets/checkpoints/pi0_droid/params"
+        _ckpt_by_benchmark = {
+            "droid": "gs://openpi-assets/checkpoints/pi0_droid/params",
+            "libero": "gs://openpi-assets/checkpoints/pi0_base/params",
+        }
+
+    if benchmark not in _ckpt_by_benchmark:
+        raise ValueError(
+            f"Unknown benchmark {benchmark!r}. Expected one of: {sorted(_ckpt_by_benchmark)}."
+        )
+    checkpoint_url = _ckpt_by_benchmark[benchmark]
+
+    # ------------------------------------------------------------------ #
+    # Data config                                                           #
+    # ------------------------------------------------------------------ #
+    if benchmark == "droid":
+        data_cfg = _cfg.LeRobotDROIDDataConfig(
+            repo_id=repo_id,
+            base_config=_cfg.DataConfig(prompt_from_task=True),
+        )
+    else:  # benchmark == "libero"
+        data_cfg = _cfg.LeRobotLiberoDataConfig(
+            repo_id=repo_id,
+            base_config=_cfg.DataConfig(prompt_from_task=True),
+            extra_delta_transform=True,
+        )
 
     # ------------------------------------------------------------------ #
     # Assemble TrainConfig                                                  #
@@ -140,10 +180,7 @@ def make_head_tuning_config(
     return _cfg.TrainConfig(
         name=name,
         model=model_cfg,
-        data=_cfg.LeRobotDROIDDataConfig(
-            repo_id=repo_id,
-            base_config=_cfg.DataConfig(prompt_from_task=True),
-        ),
+        data=data_cfg,
         optimizer=_opt.AdamWForHeadTuning(
             freeze_kv=True,
             only_attention=False,

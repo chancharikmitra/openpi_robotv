@@ -692,6 +692,7 @@ _CONFIGS = [
             (9, 7), (9, 4), (8, 4), (9, 2), (5, 7), (7, 6), (8, 5), (9, 1), (7, 1), (1, 5),
             (3, 2), (9, 0), (3, 1), (9, 5), (1, 6), (4, 7), (7, 0), (8, 6), (5, 3), (1, 3),
         ],  # representative 20-head set for illustrative purposes
+        benchmark="libero",
     ),
 
 
