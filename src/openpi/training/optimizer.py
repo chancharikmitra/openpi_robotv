@@ -177,7 +177,7 @@ def _create_head_tuning_mask(
         
         # Only process attention weights (regular or LoRA)
         if not (is_attn_weight and (is_regular_weight or is_lora_weight)):
-            # 非注意力权重：
+            # Non-attention weights:
             if only_attention:
                 return jnp.zeros_like(leaf, dtype=jnp.int8) if hasattr(leaf, 'shape') else 0
             if freeze_mlp:

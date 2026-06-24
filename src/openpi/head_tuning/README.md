@@ -26,7 +26,7 @@ The output HDF5 stores tensors of shape **`(18 layers, 8 heads, 256 dim)`** per 
 
 ### DROID benchmark
 
-Input: a DROID HDF5 file (converted to LeRobot format via `src/openpi/convert2lerobot.py`).
+Input: a DROID HDF5 file (converted to LeRobot format via `scripts/extract_libero_task_subset.py` or similar data-prep tooling).
 Policy checkpoint loaded automatically: `gs://openpi-assets/checkpoints/pi05_droid/params`.
 
 ```bash
@@ -213,7 +213,7 @@ The key modifications are:
 | File | What was changed |
 |------|-----------------|
 | `src/openpi/models/gemma.py` | Added `return_attention_heads` / `return_attention_probs` kwargs to `Attention.__call__` and `Block.__call__`; updated `nn.remat` static argnums and `nn.scan` broadcast axes in `Module.setup` to propagate the new flags across all layers; `Module.__call__` returns an optional `out_dict` containing stacked per-layer activations. |
-| `src/openpi/models/pi0.py` | Added a pass-through path in `_sample_actions` to collect and return the attention activation dict when head extraction is requested. |
+| `src/openpi/models/pi0.py` | Added a pass-through path in `sample_actions` to collect and return the attention activation dict when head extraction is requested. |
 | `src/openpi/training/optimizer.py` | Added the `AdamWForHeadTuning` class: a masked AdamW that computes a per-parameter binary mask from the `trainable_head_indices` list and zeros out gradients for all other parameters before the Adam update. |
 | `scripts/train.py` | Added an import and wiring call so that `AdamWForHeadTuning` is passed the model's parameter tree at initialization (needed to build the mask). |
 | `src/openpi/models/pi0_config.py` | Added `get_freeze_filter_always_freeze_expert_and_siglip()` helper that returns a freeze predicate matching SigLIP and action-expert parameter paths. |

@@ -1,5 +1,4 @@
 import numpy as np
-from .inference import build_feat_subset
 
 
 def pairwise_dist(q: np.ndarray, base: np.ndarray, metric: str = "cosine") -> np.ndarray:

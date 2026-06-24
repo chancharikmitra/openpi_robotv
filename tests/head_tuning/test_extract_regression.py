@@ -1,5 +1,6 @@
 """Regression test: new extract CLI produces byte-identical activations to the golden H5."""
 import glob
+import os
 import pathlib
 import subprocess
 import sys
@@ -29,6 +30,7 @@ def test_extract_droid_matches_golden(tmp_path: pathlib.Path) -> None:
     if not matches:
         pytest.skip("droid input H5 not present")
     out = tmp_path / "out.h5"
+    env = {**os.environ, "OPENPI_DATA_HOME": "/scr2/yusenluo/openpi_robotv/.cache/openpi"}
     subprocess.run(
         [
             sys.executable,
@@ -46,6 +48,7 @@ def test_extract_droid_matches_golden(tmp_path: pathlib.Path) -> None:
             "2",
         ],
         check=True,
+        env=env,
     )
     with h5py.File(GOLDEN) as g, h5py.File(out) as o:
         okeys = sorted(_leaf_groups(o))

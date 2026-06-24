@@ -20,7 +20,6 @@ Usage examples::
 from __future__ import annotations
 
 import dataclasses
-import os
 
 import tyro
 
@@ -71,8 +70,6 @@ _BENCHMARK_CONFIG: dict[str, tuple[str, str]] = {
 
 def main(args: Args) -> None:
     """Load policy, load episodes, run inference, and write activations to H5."""
-    os.environ.setdefault("OPENPI_DATA_HOME", "/scr2/yusenluo/openpi_robotv/.cache/openpi")
-
     if args.benchmark not in _BENCHMARK_CONFIG:
         raise ValueError(f"Unknown benchmark {args.benchmark!r}; must be 'droid' or 'libero'.")
 
