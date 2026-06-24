@@ -8,11 +8,10 @@ from .inference import (
 )
 from .selection import (
     rank_single_heads_per_k, rank_single_heads, simple_topk_select,
-    greedy_forward_select, reinforce_select_heads, learn_head_weights,
-    compute_loeo_mse_torch, compute_loeo_mse_torch_with_metric,
+    greedy_forward_select,
 )
 from .metrics import (
-    pairwise_dist, build_metric_ctx_from_train, build_global_metric_ctx_for_heads
+    pairwise_dist, pairwise_dist_matrix,
 )
 from .eval import (
     evaluate_leave_one_episode_out_batched, evaluate_leave_one_episode_out,
@@ -22,10 +21,12 @@ from .eval import (
 from .viz import knn_overlap_and_plots
 
 __all__ = [
-    "weighted_avg", "build_feat_subset",
-    "rank_single_heads", "simple_topk_select", "greedy_forward_select", "reinforce_select_heads",
+    "weighted_avg", "weighted_avg_batched", "build_feat_subset",
+    "rank_single_heads_per_k", "rank_single_heads", "simple_topk_select", "greedy_forward_select",
     "load_episode_frames", "frame_to_vec", "build_dataset", "transform_frame",
-    "pairwise_dist", "build_metric_ctx_from_train", "build_global_metric_ctx_for_heads",
+    "transform_episode", "HeadPreprocessor", "IdentityScaler", "PreprocessedData",
+    "get_action_labels", "save_action_labels",
+    "pairwise_dist", "pairwise_dist_matrix",
     "evaluate_leave_one_episode_out_batched", "evaluate_leave_one_episode_out",
     "evaluate_leave_one_frame_out_single_episode", "evaluate_head_subset_cross_validation",
     "evaluate_model_on_h5", "predict_episode",

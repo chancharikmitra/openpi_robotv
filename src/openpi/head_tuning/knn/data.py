@@ -1,8 +1,8 @@
 """
 KNN data loading and preprocessing utilities.
 
-Handles loading attention/action data from HDF5 files, per-head z-score and PCA
-preprocessing, dataset construction, and action label export.
+Handles loading attention/action data from HDF5 files, dataset construction,
+and action label export. Features are stored raw (no PCA / z-score applied).
 """
 
 import h5py
@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
 
@@ -39,7 +37,7 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
     Load all frames for a given episode.
     Returns:
       attention_data: (F, 18, 8, 256)
-      action_data: (F, A) or (F,1) if scalar
+      action_data: (F, A) or (F, 1) if scalar
     """
     group = h5_file[episode_key]
     attention_list, action_list = [], []
@@ -47,7 +45,7 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
         frame_group = group[frame_key]
         if "first_action_token_attn" not in frame_group:
             raise KeyError(f"{episode_key}/{frame_key} missing 'first_action_token_attn'")
-        attention = _coerce_float32(np.asarray(frame_group["first_action_token_attn"]))   # (18,8,256)
+        attention = _coerce_float32(np.asarray(frame_group["first_action_token_attn"]))   # (18, 8, 256)
 
         # Prefer new-format action_label (8 dims for droid, 7 for libero, ...)
         if "action_label" in frame_group:
@@ -84,7 +82,7 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
         attention_list.append(attention)
         action_list.append(action)
 
-    attention_data = np.stack(attention_list, axis=0)  # (F,18,8,256)
+    attention_data = np.stack(attention_list, axis=0)  # (F, 18, 8, 256)
     action_data = np.stack(action_list, axis=0)   # (F, A?) or (F,)
     if action_data.ndim == 1:
         action_data = action_data[:, None]
@@ -92,28 +90,27 @@ def load_episode_frames(h5_file: h5py.File, episode_key: str) -> Tuple[np.ndarra
 
 
 def frame_to_vec(frame_attention: np.ndarray, num_layers: int = 18, heads_per_layer: int = 8, d_head: int = 256) -> np.ndarray:
-    """Flatten a single frame attention tensor: (18,8,256) -> (144,256)"""
+    """Flatten a single frame attention tensor: (18, 8, 256) -> (144, 256)"""
     assert frame_attention.shape == (num_layers, heads_per_layer, d_head)
     return frame_attention.reshape(num_layers * heads_per_layer, d_head)
 
 
-@dataclass
-class HeadPreprocessor:
-    """Per-head preprocessor."""
-    scaler: StandardScaler
-    pca: Optional[PCA]
-
-
 class IdentityScaler:
-    """Identity transform aligned to StandardScaler API; implements transform only."""
+    """Pass-through scaler with StandardScaler-compatible transform API."""
     def transform(self, X: np.ndarray) -> np.ndarray:
         return X
 
 
 @dataclass
+class HeadPreprocessor:
+    """Per-head preprocessor (identity pass-through; kept for model compatibility)."""
+    scaler: IdentityScaler
+
+
+@dataclass
 class PreprocessedData:
     """Preprocessed dataset."""
-    Xh_red: np.ndarray          # (N, 144, d)  d = PCA_D or 256
+    Xh_red: np.ndarray          # (N, 144, d)  d = d_head (256 by default)
     Y: np.ndarray               # (N, A)
     ep_ids: np.ndarray          # (N,)
     t_ids: np.ndarray           # (N,)
@@ -141,15 +138,13 @@ class PreprocessedData:
 def build_dataset(
     attn_h5: str,
     episodes: List[str],
-    use_pca: bool = False,
-    use_zscore: bool = False,
-    pca_components: int = 32,
+    *,
     num_layers: int = 18,
     heads_per_layer: int = 8,
-    d_head: int = 256
+    d_head: int = 256,
 ) -> PreprocessedData:
     """
-    Build the full dataset and apply per-head preprocessing (z-score + optional PCA).
+    Build the full dataset from attention H5; features are stored raw (no PCA / z-score).
     """
     total_heads = num_layers * heads_per_layer
 
@@ -167,7 +162,7 @@ def build_dataset(
     ptr = 0
     with h5py.File(attn_h5, "r") as f:
         for ep in tqdm(episodes, desc="Load episodes"):
-            attention, actions = load_episode_frames(f, ep)     # (F,18,8,256), (F,A)
+            attention, actions = load_episode_frames(f, ep)     # (F, 18, 8, 256), (F, A)
             F = attention.shape[0]
             X_all[ptr:ptr+F] = attention.reshape(F, total_heads, d_head)
             Y_all.append(actions.astype(np.float32))
@@ -176,50 +171,29 @@ def build_dataset(
             ptr += F
 
     Y = np.concatenate(Y_all, axis=0)  # (N, A)
-    d_output = pca_components if use_pca else d_head
-    Xh_reduced = np.empty((X_all.shape[0], total_heads, d_output), dtype=np.float32)
-    preprocessors: List[HeadPreprocessor] = []
 
-    for head in tqdm(range(total_heads), desc="Per-head zscore+PCA"):
-        head_features = X_all[:, head, :]                          # (N,256)
-        if use_zscore:
-            scaler = StandardScaler().fit(head_features)
-            standardized_features = scaler.transform(head_features)
-        else:
-            scaler = IdentityScaler()
-            standardized_features = head_features
-
-        if use_pca:
-            pca = PCA(n_components=pca_components, svd_solver="auto", random_state=0).fit(standardized_features)
-            reduced_features = pca.transform(standardized_features).astype(np.float32)  # (N,d_output)
-        else:
-            pca = None
-            reduced_features = standardized_features.astype(np.float32)
-
-        Xh_reduced[:, head, :] = reduced_features
-        preprocessors.append(HeadPreprocessor(scaler, pca))
+    # No per-head preprocessing; build identity preprocessors for model compatibility
+    preprocessors: List[HeadPreprocessor] = [HeadPreprocessor(scaler=IdentityScaler()) for _ in range(total_heads)]
 
     return PreprocessedData(
-        Xh_red=Xh_reduced, Y=Y, ep_ids=episode_ids, t_ids=frame_ids,
-        preproc=preprocessors, episodes=episodes_sorted
+        Xh_red=X_all, Y=Y, ep_ids=episode_ids, t_ids=frame_ids,
+        preproc=preprocessors, episodes=episodes_sorted,
     )
 
 
 def transform_frame(frame_attention: np.ndarray, model, num_layers: int = 18, heads_per_layer: int = 8, d_head: int = 256) -> np.ndarray:
-    """Transform a single frame using the trained model's preprocessing."""
-    attention_vector = frame_to_vec(frame_attention, num_layers, heads_per_layer, d_head)  # (144,256)
+    """Transform a single frame using the trained model's selected heads."""
+    attention_vector = frame_to_vec(frame_attention, num_layers, heads_per_layer, d_head)  # (144, 256)
     feature_parts = []
     for head in model.heads:
         transformed = model.preproc[head].scaler.transform(attention_vector[head][None, :])
-        if model.preproc[head].pca is not None:
-            transformed = model.preproc[head].pca.transform(transformed)
         feature_parts.append(transformed.astype(np.float32))
     return np.concatenate(feature_parts, axis=1).reshape(-1)  # (|selected_heads|*d,)
 
 
 def transform_episode(attn_frames: np.ndarray, model, num_layers: int = 18, heads_per_layer: int = 8, d_head: int = 256) -> np.ndarray:
     """
-    Transform all frames in an episode using the trained model's preprocessing.
+    Transform all frames in an episode using the trained model's selected heads.
     Inputs:
       - attn_frames: (F, 18, 8, 256)
     Returns:
@@ -229,12 +203,10 @@ def transform_episode(attn_frames: np.ndarray, model, num_layers: int = 18, head
     flat = attn_frames.reshape(F, num_layers * heads_per_layer, d_head)  # (F, 144, 256)
     parts = []
     for head in model.heads:
-        feat = flat[:, head, :]                                         # (F,256)
-        feat = model.preproc[head].scaler.transform(feat)               # (F,256)
-        if model.preproc[head].pca is not None:
-            feat = model.preproc[head].pca.transform(feat)              # (F,d)
+        feat = flat[:, head, :]                                          # (F, 256)
+        feat = model.preproc[head].scaler.transform(feat)                # (F, 256)
         parts.append(feat.astype(np.float32))
-    return np.concatenate(parts, axis=1).astype(np.float32)             # (F, |S|*d)
+    return np.concatenate(parts, axis=1).astype(np.float32)              # (F, |S|*d)
 
 
 def get_action_labels(
