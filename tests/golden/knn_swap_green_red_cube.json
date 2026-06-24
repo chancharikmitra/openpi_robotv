@@ -1,0 +1,9 @@
+{
+  "attn_h5_basename": "swap_green_red_cube_pi05_action.h5",
+  "unit_mode": "head",
+  "target": 20,
+  "best_k": 30,
+  "cv_mse": 0.021498,
+  "cv_mse_tol": 1e-4,
+  "trainable_head_indices": [[9,7],[9,4],[8,4],[9,2],[5,7],[7,6],[8,5],[9,1],[7,1],[1,5],[3,2],[9,0],[3,1],[9,5],[1,6],[4,7],[7,0],[8,6],[5,3],[1,3]]
+}
