@@ -16,16 +16,18 @@ openpi 之上一个干净、可复现的 `head_tuning` 方法层，4 阶段 pipe
 3. **写 config** — 把选中的 `trainable_head_indices` 注入 TrainConfig。
 4. **head-tuning 微调** — 用 masked optimizer 只训练选中的头。
 
-### 1.2 不动的（方法根基，原样保留，只补文档）
-- `scripts/train.py` 的训练循环与 `_create_masked_optimizer_for_head_tuning`。
-- `training/optimizer.py` 的 `AdamWForHeadTuning` 与 `_create_head_tuning_mask`。
-- `training/config.py` 的 head-tuning 相关字段。
-- `models/gemma.py` 与 `models/pi0.py` 中所有 `@yusen` 标记的 activation 提取 / `delta_heads` 注入改动。
+### 1.2 openpi 核心改动（保留功能，但作为 fork delta 显式管理）
+方法依赖对 openpi 核心文件的 in-place 改动，这些功能保留，但必须让审阅者一眼分清哪些是我们改的（详见第 5 节）：
+- `models/gemma.py` / `models/pi0.py` / `models/pi0_config.py` / `policies/policy.py` — activation 提取 / `delta_heads` plumbing / freeze 助手。
+- `training/optimizer.py`（`AdamWForHeadTuning` + mask）/ `scripts/train.py`（masked optimizer）。
+这些改动**不能挪走**（深在前向/训练循环里），处理方式 = 原地保留 + 统一标记 + `UPSTREAM_CHANGES.md`。
 
 ### 1.3 发布范围
 - **benchmark**: droid 为主、libero 保留；CALVIN 全部清除。
 - **选头方法**: 只发布 KNN 主方法。SAV / CMA / variance 三个替代方法清除。
+- **推理期 steering 不在范围**: `delta_heads` 推理 steering 不作为发布功能。`scripts/serve_policy.py` 整段回退上游；`gemma.py` / `policy.py` 里的 `delta_heads` 代码可保留但文档不宣传。
 - **文档**: 只讲方法层贡献；openpi 原生 README 不动，仅加一节指向方法层文档。
+- **fork 基准点**: 上游 `Physical-Intelligence/openpi`，merge-base `5bff19b`（`git diff` 以此为基准）。
 
 ---
 
@@ -106,7 +108,35 @@ src/openpi/head_tuning/
 
 ---
 
-## 5. 清理清单
+## 5. openpi 核心改动处理（fork delta）
+
+跟上游 `5bff19b` diff，核心文件分两类处理。
+
+### 5.1 方法必需的 plumbing（原地保留 + 统一标记）
+| 文件 | 改动 | 当前标记 |
+|---|---|---|
+| `models/gemma.py` | activation 返回 + `delta_heads` 注入 | 已有 `@yusen` |
+| `models/pi0.py` | state/action 头激活分离提取 | 已有 `@yusen` |
+| `models/pi0_config.py` | `get_freeze_filter_always_freeze_expert_and_siglip` | **缺标记** |
+| `policies/policy.py` | `infer` 的 `return_attention*` / `delta_heads` | 部分 `@yusen` |
+| `training/optimizer.py` | `AdamWForHeadTuning` + `_create_head_tuning_mask` | **缺标记** |
+| `scripts/train.py` | `_create_masked_optimizer_for_head_tuning` + masked update | **缺标记** |
+
+处理：
+1. 给上述每个改动 hunk 加**统一标记**（如 `# [head_tuning]` 块注释），尤其补齐当前缺标记的 optimizer / train / pi0_config。
+2. 生成 `docs/UPSTREAM_CHANGES.md`：由 `git diff 5bff19b HEAD -- <file>` 派生，逐文件列出"改了什么 / 为什么 / 对应方法阶段"。这是 fork delta 的权威清单。
+
+### 5.2 塞进核心文件的 research 垃圾（清理 / 回退）
+- `scripts/serve_policy.py`：351 行私有路径 `EnvMode` + Checkpoint（`/darrell_robotics/...`）——**整段回退到上游原状**。
+- `training/config.py`：几十条实验 TrainConfig + 死注释——裁成 droid/libero 各 1 条示例（与第 3.3 节一致）。
+- `scripts/compute_norm_stats.py`：17 行小改——核查是否方法必需，非必需则回退上游。
+
+### 5.3 验收
+`git diff 5bff19b HEAD -- scripts/serve_policy.py` 应为空（已回退）；其余核心文件的 diff 与 `UPSTREAM_CHANGES.md` 列表一一对应。
+
+---
+
+## 6. 清理清单
 
 ### 5.1 删除
 - **根目录**: `all_heads_rank_ablation.sh`、`eccv*.sh`、`eval_libero10.sh`、`layer_ablation.sh`、`libero_finetune.sh`、`run_swap_green_red_cube.sh`、所有 `head_selection_*.txt`、`layer_selection_*.txt`、`dataset_structure*.txt`、`gripper_diff_hist.png`、`temp_data/`、`logs/`、`extract_single_episode.py`、`organize_data_into_train_format_optimized.py`、`environment-openpi-history.yml`、`third_party/`（calvin + RLinf）。
@@ -115,7 +145,8 @@ src/openpi/head_tuning/
 
 ### 5.2 保留
 - `environment-openpi.yml`（作为 release 依赖凭证；删 `-history` 版本）。
-- openpi 原生数据/训练管线、`transforms.py`、`scripts/compute_norm_stats.py`、`scripts/serve_policy.py`、`scripts/extract_libero_task_subset.py`（libero 数据子集抽取）。
+- openpi 原生数据/训练管线、`transforms.py`、`scripts/extract_libero_task_subset.py`（libero 数据子集抽取）。
+- `scripts/serve_policy.py`、`scripts/compute_norm_stats.py`：文件保留，但按第 5 节回退/核查（不属于"删除"，也不属于改动保留）。
 
 ### 5.3 .gitignore 补充
 ```
@@ -133,27 +164,30 @@ checkpoints/
 
 ---
 
-## 6. 文档
+## 7. 文档
 
 - `src/openpi/head_tuning/README.md`：4 阶段贯穿教程，给 droid + libero 两套具体命令；说明 `gemma.py` / `pi0.py` 的 activation 改动和 head-tuning masked optimizer 原理。
-- 顶层 `README.md`：只加一节指向 `head_tuning/README.md`，openpi 原文不动。
+- `docs/UPSTREAM_CHANGES.md`：fork delta 权威清单（见第 5.1 节）。
+- 顶层 `README.md`：只加一节指向 `head_tuning/README.md` 与 `UPSTREAM_CHANGES.md`，openpi 原文不动。
 
 ---
 
-## 7. 验证策略（重构必须证明行为不变）
+## 8. 验证策略（重构必须证明行为不变）
 
 - **extract**: 重构后 `extract --benchmark droid` 在小样本上跑，输出 H5 的 `last_token_attn` 等数据集与原 `generate_activation_dataset_on_robot.py` 输出**逐值比对**（相同 keyframe、相同 activation）；libero 同理。
 - **select**: 在现有 attn H5 上跑重构后的 `select`，复现已知结果——`swap_green_red_cube_20` 的 `best_k=30, cv_mse=0.021498` 及那组 20 个 head。
 - **finetune**: steering TrainConfig 能正常 build，`scripts/train.py` 能构出 masked optimizer（几步 smoke run，不跑满训练）。
+- **fork delta**: `git diff 5bff19b HEAD -- scripts/serve_policy.py` 为空；其余核心文件 diff 与 `UPSTREAM_CHANGES.md` 一一对应。
 - 现有测试（`transforms_test.py` 等）保持绿。
 
 ---
 
-## 8. 实现顺序建议
+## 9. 实现顺序建议
 
 1. 建子包骨架 + 把 `knn/` 迁入并按职责拆分（data/inference/selection/model），裁掉 reinforce/learn_weights 与未用 torch 变体。
 2. `select.py` 瘦 CLI + `heads.json` 输出；用 `swap_green_red_cube` 复现 cv_mse 验证。
 3. `extract.py` + adapters（base/droid/libero）；逐值比对验证。
 4. `configs.py` 工厂 + droid/libero 示例 config；清理 `config.py` 死注释；finetune smoke。
-5. 执行清理清单 + 更新 `.gitignore`。
-6. 写 `head_tuning/README.md` + 顶层 README 指引。
+5. openpi 核心改动处理：补齐统一标记、回退 `serve_policy.py`、核查 `compute_norm_stats.py`、生成 `UPSTREAM_CHANGES.md`。
+6. 执行清理清单 + 更新 `.gitignore`。
+7. 写 `head_tuning/README.md` + 顶层 README 指引。
