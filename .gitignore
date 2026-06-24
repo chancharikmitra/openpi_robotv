@@ -170,3 +170,17 @@ cython_debug/
 # head_tuning regression golden binaries (local dev artifacts; regenerate via tests/golden/README.md)
 tests/golden/*.h5
 tests/golden/*.log
+
+# Local artifacts / research scratch (not part of the release)
+temp_data/
+logs/
+slurm_output/
+# Activation / regression data (kept on disk locally; e.g. tests/golden/*.h5)
+*.h5
+head_selection_*.txt
+layer_selection_*.txt
+*_structure*.txt
+.cache/
+.tmp/
+.jax_cache/
+pytest-of-*/
