@@ -19,6 +19,7 @@ from .eval import (
     evaluate_model_on_h5, predict_episode
 )
 from .viz import knn_overlap_and_plots
+from .model import KnnRegModel, fit_knn_reg_with_heads
 
 __all__ = [
     "weighted_avg", "weighted_avg_batched", "build_feat_subset",
@@ -31,4 +32,5 @@ __all__ = [
     "evaluate_leave_one_frame_out_single_episode", "evaluate_head_subset_cross_validation",
     "evaluate_model_on_h5", "predict_episode",
     "knn_overlap_and_plots",
+    "KnnRegModel", "fit_knn_reg_with_heads",
 ]

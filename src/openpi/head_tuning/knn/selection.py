@@ -5,9 +5,9 @@ Provides single-head ranking, greedy forward selection, and simple top-k selecti
 All methods evaluate candidate head subsets via leave-one-episode-out (LOEO) cross-validation
 with cosine (default) or euclidean distance — no metric-learning transforms.
 
-Note: `reinforce_select_heads`, `learn_head_weights`, `compute_loeo_mse_torch`, and
-`compute_loeo_mse_torch_with_metric` have been removed as part of the metric-machinery
-cleanup (Task 4). They will be addressed in Task 5.
+The deprecated functions `reinforce_select_heads`, `learn_head_weights`,
+`compute_loeo_mse_torch`, and `compute_loeo_mse_torch_with_metric` were
+removed as part of the metric-machinery cleanup (Tasks 4–5).
 """
 
 import math
@@ -15,6 +15,8 @@ from typing import Iterable, List, Tuple
 
 import numpy as np
 from tqdm import tqdm
+
+from .eval import evaluate_leave_one_episode_out
 
 
 def rank_single_heads_per_k(
@@ -41,9 +43,6 @@ def rank_single_heads_per_k(
         if is_layer:
             return f"Layer {idx:2d}"
         return f"Head {idx:3d} (L{idx//8:2d}H{idx%8})"
-
-    # Lazy import to avoid circular dependency
-    from .eval import evaluate_leave_one_episode_out
 
     print(f"\n=== Single {unit_word} Ranking for k={k} ===")
     for h in range(H):
@@ -122,9 +121,6 @@ def simple_topk_select(
     target_heads: int,
 ):
     """For each k, select top heads and evaluate. Return the best (k, heads, mse) combination."""
-    # Lazy import to avoid circular dependency
-    from .eval import evaluate_leave_one_episode_out
-
     best_overall_mse, best_overall_k, best_overall_heads = math.inf, None, None
     per_k_results = {}
 
@@ -156,9 +152,6 @@ def greedy_forward_select(
     target_heads: int,
 ):
     """For each k, do greedy forward selection and return the best (k, heads, mse) combination."""
-    # Lazy import to avoid circular dependency
-    from .eval import evaluate_leave_one_episode_out
-
     best_overall_mse, best_overall_k, best_overall_heads = math.inf, None, None
     per_k_results = {}
 
