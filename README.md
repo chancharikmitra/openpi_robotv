@@ -321,3 +321,10 @@ We will collect common issues and their solutions here. If you encounter an issu
 | Import errors when running examples       | Make sure you've installed all dependencies with `uv sync`. Some examples may have additional requirements listed in their READMEs.                    |
 | Action dimensions mismatch                | Verify your data processing transforms match the expected input/output dimensions of your robot. Check the action space definitions in your policy classes.                                  |
 | Diverging training loss                            | Check the `q01`, `q99`, and `std` values in `norm_stats.json` for your dataset. Certain dimensions that are rarely used can end up with very small `q01`, `q99`, or `std` values, leading to huge states and actions after normalization. You can manually adjust the norm stats as a workaround. |
+
+## Attention Head-Tuning (this fork)
+
+This fork extends upstream openpi with a four-stage **attention head selection and fine-tuning** pipeline for pi0/pi0.5 models.  Rather than fine-tuning all LoRA parameters, the method identifies the small subset of attention heads (out of 144 total) that carry the strongest task-relevant signal using Leave-One-Episode-Out KNN regression over frozen-model activations, then trains only those heads — typically ~20 heads, or roughly 20 M parameters.  The pipeline covers activation extraction (`openpi.head_tuning.extract`), head selection (`openpi.head_tuning.select`), config construction (`openpi.head_tuning.configs`), and training via the standard `scripts/train.py`.
+
+- Full walkthrough: [`src/openpi/head_tuning/README.md`](src/openpi/head_tuning/README.md)
+- Fork delta vs upstream openpi (every `[head_tuning]` annotation explained): [`docs/UPSTREAM_CHANGES.md`](docs/UPSTREAM_CHANGES.md)
