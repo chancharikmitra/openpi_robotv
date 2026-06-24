@@ -52,6 +52,7 @@ class Config:
     lora_configs: dict[str, lora.LoRAConfig] = dataclasses.field(default_factory=dict)
 
 
+# [head_tuning] BEGIN: extended Variant type with LoRA rank-ablation variants
 Variant = Literal[
     "dummy",
     "gemma_300m",
@@ -69,6 +70,7 @@ Variant = Literal[
     "gemma_2b_lora_r32",
     "gemma_2b_lora_r64",
 ]
+# [head_tuning] END
 
 
 def get_config(variant: Variant) -> Config:
@@ -111,6 +113,7 @@ def get_config(variant: Variant) -> Config:
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=16, alpha=16.0), "ffn": lora.LoRAConfig(rank=16, alpha=16.0)},
         )
+    # [head_tuning] BEGIN: gemma_2b LoRA rank-ablation config entries (finetune rank sweep)
     # gemma_2b LoRA ablation variants (rank=4/8/16/32/64, alpha=rank)
     if variant in ("gemma_2b_lora_r4", "gemma_2b_lora_r8", "gemma_2b_lora_r16", "gemma_2b_lora_r32", "gemma_2b_lora_r64"):
         rank = int(variant.split("_r")[-1])
@@ -123,6 +126,7 @@ def get_config(variant: Variant) -> Config:
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=rank, alpha=float(rank)), "ffn": lora.LoRAConfig(rank=rank, alpha=float(rank))},
         )
+    # [head_tuning] END
     if variant == "gemma_300m_lora":
         # 311M params
         return Config(
@@ -134,6 +138,7 @@ def get_config(variant: Variant) -> Config:
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=32, alpha=32.0), "ffn": lora.LoRAConfig(rank=32, alpha=32.0)},
         )
+    # [head_tuning] BEGIN: gemma_300m LoRA rank-ablation config entries (finetune rank sweep)
     # gemma_300m LoRA ablation variants (rank=4/8/16/32/64, alpha=rank)
     if variant in ("gemma_300m_lora_r4", "gemma_300m_lora_r8", "gemma_300m_lora_r16", "gemma_300m_lora_r32", "gemma_300m_lora_r64"):
         rank = int(variant.split("_r")[-1])
@@ -146,6 +151,7 @@ def get_config(variant: Variant) -> Config:
             head_dim=256,
             lora_configs={"attn": lora.LoRAConfig(rank=rank, alpha=float(rank)), "ffn": lora.LoRAConfig(rank=rank, alpha=float(rank))},
         )
+    # [head_tuning] END
     raise ValueError(f"Unknown variant: {variant}")
 
 
@@ -201,8 +207,9 @@ class Attention(nn.Module):
     configs: Sequence[Config]
 
     @nn.compact
+    # [head_tuning] BEGIN: Attention.__call__ — added return_attention_heads/return_attention_probs flags (extract stage)
     def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False):
-        # @yusen: Enable optional attention head/prob returns
+        # [head_tuning]: Enable optional attention head/prob returns
         # all experts must share the same head dim, num heads, and num kv heads for self-attention to work
         assert all(config.head_dim == self.configs[0].head_dim for config in self.configs)
         assert all(config.num_heads == self.configs[0].num_heads for config in self.configs)
@@ -287,7 +294,7 @@ class Attention(nn.Module):
             else:
                 out.append(None)
 
-        attention_heads = encoded if return_attention_heads else None  # @yusen: Return per-head encoded vectors (not probabilities)
+        attention_heads = encoded if return_attention_heads else None  # [head_tuning]: Return per-head encoded vectors (not probabilities)
 
         if return_attention_probs:
             # probs shape: [B, K, G, T, S] -> take last query position
@@ -300,6 +307,7 @@ class Attention(nn.Module):
             return out, (k, v), attention_heads, attention_probs
         else:
             return out, (k, v)
+    # [head_tuning] END
 
 
 @at.typecheck
@@ -342,11 +350,12 @@ class Block(nn.Module):
     dropout: float = 0.0
     dropout_bdims: tuple[int, ...] = ()
 
+    # [head_tuning] BEGIN: Block.__call__ — propagate attention-return flags and unpack aux outputs (extract stage)
     @nn.compact
     def __call__(self, xs, kv_cache, positions, attn_mask, adarms_cond, deterministic=True,  # noqa: FBT002
                  return_attention_heads: bool = False,
                  return_attention_probs: bool = False):  # noqa: FBT002
-        # @yusen: Propagate attention-return flags through Block
+        # [head_tuning]: Propagate attention-return flags through Block
         xs = sharding.activation_sharding_constraint(xs)
         drop = nn.Dropout(self.dropout, self.dropout_bdims) if self.dropout else lambda x, _: x
 
@@ -401,6 +410,7 @@ class Block(nn.Module):
             return xs, (kv_cache, attention_heads, attention_probs)
         else:
             return xs, kv_cache
+    # [head_tuning] END
 
 
 KVCache: TypeAlias = tuple[at.Float[at.Array, "l b _t _k _h"], at.Float[at.Array, "l b _t _v _h"]]
@@ -426,10 +436,11 @@ class Module(nn.Module):
             embed_dim=self.configs[0].width,  # embedder for first expert only
             name="embedder",
         )
+        # [head_tuning] BEGIN: Module.setup — extended remat static_argnums and scan in_axes for attention-return flags
         block_cls = nn.remat(
             Block,
             prevent_cse=False,
-            static_argnums=(6, 7, 8),  # @yusen: Mark deterministic and attention-return flags as static for remat
+            static_argnums=(6, 7, 8),  # [head_tuning]: Mark deterministic and attention-return flags as static for remat
             policy=jax.checkpoint_policies.nothing_saveable,
         )
         self.layers = nn.scan(
@@ -444,7 +455,7 @@ class Module(nn.Module):
                 nn.broadcast,
                 nn.broadcast,
                 nn.broadcast,
-            ),  # @yusen: scan in_axes for non-carry args: kv_cache(0=sliced per layer), positions, mask, adarms_cond, deterministic, return_attention_heads, return_attention_probs
+            ),  # [head_tuning]: scan in_axes for non-carry args: kv_cache(0=sliced per layer), positions, mask, adarms_cond, deterministic, return_attention_heads, return_attention_probs
             length=self.configs[0].depth,
         )(
             configs=self.configs,
@@ -452,11 +463,13 @@ class Module(nn.Module):
             dropout_bdims=self.dropout_bdims,
         )
         self.final_norms = [RMSNorm(name=_name("final_norm", i)) for i in range(len(self.configs))]
+        # [head_tuning] END
 
     @at.typecheck
     def embed(self, tokens: at.Int[at.Array, "b t"]) -> at.Float[at.Array, "b t d"]:
         return self.embedder.encode(tokens).astype(self.embed_dtype)
 
+    # [head_tuning] BEGIN: Module.__call__ — added return_attention_heads/return_attention_probs, aux dict output (extract stage)
     @at.typecheck
     def __call__(
         self,
@@ -471,7 +484,7 @@ class Module(nn.Module):
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
     ) -> tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache] | tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache, dict]:
-        # @yusen: Add attention-return flags at Module level; include aux dict in output
+        # [head_tuning]: Add attention-return flags at Module level; include aux dict in output
         embedded = jax.tree.map(lambda e: e.astype(self.embed_dtype), embedded)
         mask = jnp.asarray(mask)[:, None, :, :]
         if adarms_cond is None:
@@ -510,12 +523,13 @@ class Module(nn.Module):
         if activation_flag:
             out = {}
             if return_attention_heads:
-                out["attention_heads"] = attention_heads  # @yusen: Per-layer head encodings (K*G flattened)
+                out["attention_heads"] = attention_heads  # [head_tuning]: Per-layer head encodings (K*G flattened)
             if return_attention_probs:
-                out["attention_probs"] = attention_probs  # @yusen: Per-layer attention probabilities (current query only)
+                out["attention_probs"] = attention_probs  # [head_tuning]: Per-layer attention probabilities (current query only)
             return embedded_norm, kv_cache, out
         else:
             return embedded_norm, kv_cache
+    # [head_tuning] END
 
     def init(self, use_adarms: Sequence[bool]):
         """Convenience method for initializing all parameters, necessary due to the quirks of linen."""

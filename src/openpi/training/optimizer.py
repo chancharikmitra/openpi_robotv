@@ -3,8 +3,10 @@ from typing import Protocol, runtime_checkable
 
 import jax.numpy as jnp
 import optax
+# [head_tuning] BEGIN: additional imports for head-tuning mask construction
 import numpy as np
 from jax import tree_util
+# [head_tuning] END
 
 import openpi.shared.array_typing as at
 
@@ -104,6 +106,7 @@ class SGD(OptimizerConfig):
         return optax.sgd(lr, momentum=self.momentum, nesterov=self.nesterov)
 
 
+# [head_tuning] BEGIN: AdamWForHeadTuning optimizer config (head-selective finetuning stage)
 @dataclasses.dataclass(frozen=True)
 class AdamWForHeadTuning(OptimizerConfig):
     """AdamW optimizer that only trains specific attention heads."""
@@ -134,8 +137,10 @@ class AdamWForHeadTuning(OptimizerConfig):
             lr, b1=self.b1, b2=self.b2, eps=self.eps, weight_decay=self.weight_decay, mask=weight_decay_mask
         )
         return optax.chain(optax.clip_by_global_norm(self.clip_gradient_norm), tx)
+# [head_tuning] END
 
 
+# [head_tuning] BEGIN: _create_head_tuning_mask — builds per-param binary mask for head-selective update
 def _create_head_tuning_mask(
     params: at.Params,
     trainable_heads: list[tuple[int, int]],
@@ -268,6 +273,7 @@ def _create_head_tuning_mask(
         return final_mask
 
     return tree_util.tree_map_with_path(_get_mask, params.to_pure_dict())
+# [head_tuning] END
 
 
 def create_optimizer(

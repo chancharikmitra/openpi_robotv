@@ -61,7 +61,7 @@ class Policy(BasePolicy):
             self._sample_actions = model.sample_actions
         else:
             # JAX model setup
-            # @yusen: mark attention-return flags as static to avoid TracerBoolConversionError under JIT
+            # [head_tuning] BEGIN: mark attention-return flags as static to avoid TracerBoolConversionError under JIT
             self._sample_actions = nnx_utils.module_jit(
                 model.sample_actions,
                 static_argnames=(
@@ -71,6 +71,7 @@ class Policy(BasePolicy):
                     "return_state_and_first_action_heads",
                 ),
             )
+            # [head_tuning] END
             self._rng = rng or jax.random.key(0)
 
     @override
@@ -79,10 +80,12 @@ class Policy(BasePolicy):
         obs: dict,
         *,
         noise: np.ndarray | None = None,
+        # [head_tuning] BEGIN: attention-return flags added to infer() for activation extraction stage
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
         return_state_heads: bool = False,
         return_state_and_first_action_heads: bool = False,
+        # [head_tuning] END
     ) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
@@ -105,18 +108,19 @@ class Policy(BasePolicy):
                 noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
             sample_kwargs["noise"] = noise
 
-        # @yusen: pass attention-return flags through to sample_actions
+        # [head_tuning] BEGIN: pass attention-return flags through to sample_actions
         sample_kwargs["return_attention_heads"] = return_attention_heads
         sample_kwargs["return_attention_probs"] = return_attention_probs
         sample_kwargs["return_state_heads"] = return_state_heads
         sample_kwargs["return_state_and_first_action_heads"] = return_state_and_first_action_heads
+        # [head_tuning] END
 
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()
         result = self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs)
-        #result = self._sample_actions(sample_rng_or_pytorch_device, observation)
 
-        # @yusen: unpack optional attention outputs and optional decode step
+        # [head_tuning] BEGIN: unpack optional attention outputs from sample_actions result
+        # unpack optional attention outputs and optional decode step
         actions = result
         attention_outputs = None
         decode_step = None
@@ -127,7 +131,8 @@ class Policy(BasePolicy):
                 actions, attention_outputs, decode_step = result
 
         outputs = {"state": inputs["state"], "actions": actions}
-        
+        # [head_tuning] END
+
         model_time = time.monotonic() - start_time
         if self._is_pytorch_model:
             outputs = jax.tree.map(lambda x: np.asarray(x[0, ...].detach().cpu()), outputs)
@@ -138,12 +143,12 @@ class Policy(BasePolicy):
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
+        # [head_tuning] BEGIN: attach attention outputs / decode_step to result dict
         if attention_outputs is not None:
             outputs["attention_outputs"] = attention_outputs
-            # print("attention_outputs:", outputs["attention_outputs"])
         if decode_step is not None:
             outputs["decode_step"] = decode_step
-        # print("outputs:", outputs)
+        # [head_tuning] END
         return outputs
 
     @property

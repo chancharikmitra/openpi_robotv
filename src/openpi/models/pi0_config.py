@@ -107,6 +107,7 @@ class Pi0Config(_model.BaseModelConfig):
             return nnx.Nothing
         return nnx.All(*filters)
 
+    # [head_tuning] BEGIN: get_freeze_filter_always_freeze_expert_and_siglip — freeze filter for head-selective finetune stage
     def get_freeze_filter_always_freeze_expert_and_siglip(self) -> nnx.filterlib.Filter:
         """Freeze Action Expert and SIGLIP always; main LLM keep original LoRA logic.
         - Always freeze Action Expert branch (including its LoRA) and SIGLIP branch;
@@ -133,3 +134,4 @@ class Pi0Config(_model.BaseModelConfig):
         # If only Expert has LoRA, still freeze expert overall (including its LoRA), no extra processing needed
 
         return nnx.Any(*branches)
+    # [head_tuning] END

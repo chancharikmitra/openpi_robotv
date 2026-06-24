@@ -47,6 +47,7 @@ def init_logging():
     logger.handlers[0].setFormatter(formatter)
 
 
+# [head_tuning] BEGIN: _create_masked_optimizer_for_head_tuning — wraps base optimizer with head-selective mask
 def _create_masked_optimizer_for_head_tuning(
     config: _config.TrainConfig,
     params: nnx.State,
@@ -85,6 +86,7 @@ def _create_masked_optimizer_for_head_tuning(
 
     # 6. Return the new wrapped optimizer
     return optax.GradientTransformation(base_optimizer.init, masked_update_fn)
+# [head_tuning] END
 
 
 def init_wandb(config: _config.TrainConfig, *, resuming: bool, log_code: bool = False, enabled: bool = True):
@@ -125,6 +127,7 @@ def _load_weights_and_validate(loader: _weight_loaders.WeightLoader, params_shap
 def init_train_state(
     config: _config.TrainConfig, init_rng: at.KeyArrayLike, mesh: jax.sharding.Mesh, *, resume: bool
 ) -> tuple[training_utils.TrainState, Any]:
+    # [head_tuning] BEGIN: conditional optimizer selection — head-tuning vs standard
     # Conditionally create optimizer: masked for head-tuning, standard otherwise
     if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
         # Get parameter structure for mask construction without instantiating full params
@@ -132,6 +135,7 @@ def init_train_state(
         tx = _create_masked_optimizer_for_head_tuning(config, params_structure)
     else:
         tx = _optimizer.create_optimizer(config.optimizer, config.lr_schedule, weight_decay_mask=None)
+    # [head_tuning] END
 
     def init(rng: at.KeyArrayLike, partial_params: at.Params | None = None) -> training_utils.TrainState:
         rng, model_rng = jax.random.split(rng)
@@ -154,7 +158,7 @@ def init_train_state(
             params=params,
             model_def=nnx.graphdef(model),
             tx=tx,
-            opt_state=(
+            opt_state=(  # [head_tuning] pure-dict init path for head-tuning vs standard nnx.State init
                 tx.init(params.filter(config.trainable_filter).to_pure_dict())
                 if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning)
                 else tx.init(params.filter(config.trainable_filter))
@@ -207,6 +211,7 @@ def train_step(
     diff_state = nnx.DiffState(0, config.trainable_filter)
     loss, grads = nnx.value_and_grad(loss_fn, argnums=diff_state)(model, train_rng, observation, actions)
 
+    # [head_tuning] BEGIN: masked update step for head-tuning (pure-dict flow) vs standard nnx.State flow
     # Branch: head-based tuning uses pure-dict optax flow with masking
     if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
         # Optional debug of optimizer state structure at first step
@@ -236,6 +241,7 @@ def train_step(
         # Update the model in place and return the new full state.
         nnx.update(model, new_params)
         new_params = nnx.state(model)
+    # [head_tuning] END
 
     new_state = dataclasses.replace(state, step=state.step + 1, params=new_params, opt_state=new_opt_state)
     if state.ema_decay is not None:

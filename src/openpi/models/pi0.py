@@ -136,6 +136,7 @@ class Pi0(_model.BaseModel):
         ar_mask = jnp.array(ar_mask)
         return tokens, input_mask, ar_mask
 
+    # [head_tuning] BEGIN: embed_suffix — added include_action_tokens flag for state-only activation extraction
     @at.typecheck
     def embed_suffix(
         self,
@@ -187,12 +188,13 @@ class Pi0(_model.BaseModel):
             # image/language/state inputs do not attend to action tokens
             ar_mask += [True] + ([False] * (self.action_horizon - 1))
         else:
-            # @yusen: state-only path (no action tokens)
+            # [head_tuning]: state-only path (no action tokens)
             adarms_cond = None if not self.pi05 else None
         tokens = jnp.concatenate(tokens, axis=1)
         input_mask = jnp.concatenate(input_mask, axis=1)
         ar_mask = jnp.array(ar_mask)
         return tokens, input_mask, ar_mask, adarms_cond
+    # [head_tuning] END
 
     @override
     def compute_loss(
@@ -222,6 +224,7 @@ class Pi0(_model.BaseModel):
 
         return jnp.mean(jnp.square(v_t - u_t), axis=-1)
 
+    # [head_tuning] BEGIN: sample_actions — extended with attention/state head return flags (extract stage)
     @override
     def sample_actions(
         self,
@@ -243,7 +246,7 @@ class Pi0(_model.BaseModel):
         if noise is None:
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
 
-        # @yusen: Pass attention flags during prefix prefill to collect attention outputs
+        # [head_tuning]: Pass attention flags during prefix prefill to collect attention outputs
         prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
         prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
         positions = jnp.cumsum(prefix_mask, axis=1) - 1
@@ -259,12 +262,12 @@ class Pi0(_model.BaseModel):
             if return_attention_heads:
                 attn_heads = out.get("attention_heads")
                 if attn_heads is not None:
-                    # @yusen: Align key and shape with FAST pipeline (add leading dim)
+                    # [head_tuning]: Align key and shape with FAST pipeline (add leading dim)
                     attention_outputs["llm_activations"] = attn_heads[None, ...]
             if return_attention_probs:
                 attn_probs = out.get("attention_probs")
                 if attn_probs is not None:
-                    # @yusen: Store prefill attention probabilities (add leading dim for FAST alignment)
+                    # [head_tuning]: Store prefill attention probabilities (add leading dim for FAST alignment)
                     attention_outputs["llm_attn_probs_prefill"] = attn_probs[None, ...]
         else:
             _, kv_cache = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask, positions=positions)
@@ -310,7 +313,7 @@ class Pi0(_model.BaseModel):
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
 
-        # @yusen: optionally extract state-only or (state+first action) heads via a single extra forward
+        # [head_tuning]: optionally extract state-only or (state+first action) heads via a single extra forward
         if (return_state_heads or return_state_and_first_action_heads) and not self.pi05:
             zeros_time = jnp.zeros((batch_size,), dtype=observation.state.dtype)
             if return_state_and_first_action_heads:
@@ -346,7 +349,7 @@ class Pi0(_model.BaseModel):
                 else:
                     attention_outputs["llm_state_activations"] = heads_sa[None, ...]
 
-        # @yusen: in pi05, extract first action heads via a single extra forward (no state token exists)
+        # [head_tuning]: in pi05, extract first action heads via a single extra forward (no state token exists)
         if return_state_and_first_action_heads and self.pi05:
             zeros_time = jnp.zeros((batch_size,), dtype=observation.state.dtype)
             # Include action tokens only; in pi05 the first suffix token is the first action token
@@ -373,7 +376,8 @@ class Pi0(_model.BaseModel):
                 attention_outputs["llm_first_action_activations"] = heads_sa[None, :, :, 0, :, :]  # [1, L, B, Hflat, Hdim]
 
         if return_attention_heads or return_attention_probs or return_state_heads or return_state_and_first_action_heads:
-            # @yusen: Return actions with attention collected during prefix prefill
+            # [head_tuning]: Return actions with attention collected during prefix prefill
             return x_0, attention_outputs
 
         return x_0
+    # [head_tuning] END
