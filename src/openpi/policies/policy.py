@@ -69,7 +69,6 @@ class Policy(BasePolicy):
                     "return_attention_probs",
                     "return_state_heads",
                     "return_state_and_first_action_heads",
-                    "delta_token_index",
                 ),
             )
             self._rng = rng or jax.random.key(0)
@@ -82,10 +81,8 @@ class Policy(BasePolicy):
         noise: np.ndarray | None = None,
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
-        delta_heads: np.ndarray | None = None,
         return_state_heads: bool = False,
         return_state_and_first_action_heads: bool = False,
-        delta_token_index: int | None = None,
     ) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
@@ -113,11 +110,6 @@ class Policy(BasePolicy):
         sample_kwargs["return_attention_probs"] = return_attention_probs
         sample_kwargs["return_state_heads"] = return_state_heads
         sample_kwargs["return_state_and_first_action_heads"] = return_state_and_first_action_heads
-        if delta_heads is not None:
-            # Pass delta_heads as-is (JAX array) for steering; do not make static
-            sample_kwargs["delta_heads"] = jnp.asarray(delta_heads) if not self._is_pytorch_model else delta_heads
-        if delta_token_index is not None:
-            sample_kwargs["delta_token_index"] = int(delta_token_index)
 
         observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()

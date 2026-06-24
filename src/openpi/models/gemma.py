@@ -201,8 +201,8 @@ class Attention(nn.Module):
     configs: Sequence[Config]
 
     @nn.compact
-    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False, delta_heads=None, delta_token_index: int | None = None):
-        # @yusen: Enable optional attention head/prob returns and support delta_heads steering
+    def __call__(self, xs, positions, attn_mask, kv_cache, *, return_attention_heads: bool = False, return_attention_probs: bool = False):
+        # @yusen: Enable optional attention head/prob returns
         # all experts must share the same head dim, num heads, and num kv heads for self-attention to work
         assert all(config.head_dim == self.configs[0].head_dim for config in self.configs)
         assert all(config.num_heads == self.configs[0].num_heads for config in self.configs)
@@ -270,18 +270,6 @@ class Attention(nn.Module):
 
         encoded = jnp.einsum("BKGTS,BSKH->BTKGH", probs, v)
         encoded = einops.rearrange(encoded, "B T K G H -> B T (K G) H")
-
-        # Optional steering with external head activations (applied to last token)
-        if delta_heads is not None:
-            if delta_heads.ndim != 2:
-                raise ValueError("delta_heads must be (H, D), got shape=" + str(delta_heads.shape))
-            # @yusen: add delta at specified token index (default last token)
-            t_len = encoded.shape[1]
-            idx = (t_len - 1) if (delta_token_index is None) else (delta_token_index if delta_token_index >= 0 else (t_len + delta_token_index))
-            idx = int(idx)
-            onehot = jax.nn.one_hot(jnp.array(idx, dtype=jnp.int32), t_len, dtype=encoded.dtype)  # [T]
-            encoded = encoded + onehot[None, :, None, None] * delta_heads[None, None, :, :].astype(encoded.dtype)
-            # @yusen: Inject external head activations to the last token for steering
 
         out = []
         start = 0
@@ -357,10 +345,8 @@ class Block(nn.Module):
     @nn.compact
     def __call__(self, xs, kv_cache, positions, attn_mask, adarms_cond, deterministic=True,  # noqa: FBT002
                  return_attention_heads: bool = False,
-                 return_attention_probs: bool = False,
-                 delta_heads=None,
-                 delta_token_index: int | None = None):  # noqa: FBT002
-        # @yusen: Propagate attention-return flags and delta_heads through Block
+                 return_attention_probs: bool = False):  # noqa: FBT002
+        # @yusen: Propagate attention-return flags through Block
         xs = sharding.activation_sharding_constraint(xs)
         drop = nn.Dropout(self.dropout, self.dropout_bdims) if self.dropout else lambda x, _: x
 
@@ -382,8 +368,6 @@ class Block(nn.Module):
             kv_cache,
             return_attention_heads=return_attention_heads,
             return_attention_probs=return_attention_probs,
-            delta_heads=delta_heads,
-            delta_token_index=delta_token_index,
         )
         if return_attention_heads or return_attention_probs:
             post_attn, kv_cache, attention_heads, attention_probs = attn_call
@@ -445,7 +429,7 @@ class Module(nn.Module):
         block_cls = nn.remat(
             Block,
             prevent_cse=False,
-            static_argnums=(6, 7, 8, 10),  # @yusen: Mark attention-return flags and delta_token_index as static for remat
+            static_argnums=(6, 7, 8),  # @yusen: Mark deterministic and attention-return flags as static for remat
             policy=jax.checkpoint_policies.nothing_saveable,
         )
         self.layers = nn.scan(
@@ -460,9 +444,7 @@ class Module(nn.Module):
                 nn.broadcast,
                 nn.broadcast,
                 nn.broadcast,
-                0,
-                nn.broadcast,
-            ),  # @yusen: Extend scan in_axes to carry attention-return flags, delta_heads and delta_token_index
+            ),  # @yusen: scan in_axes for non-carry args: kv_cache(0=sliced per layer), positions, mask, adarms_cond, deterministic, return_attention_heads, return_attention_probs
             length=self.configs[0].depth,
         )(
             configs=self.configs,
@@ -488,10 +470,8 @@ class Module(nn.Module):
         deterministic: bool = True,
         return_attention_heads: bool = False,
         return_attention_probs: bool = False,
-        delta_heads=None,
-        delta_token_index: int | None = None,
     ) -> tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache] | tuple[Sequence[at.Float[at.Array, "b _t _d"] | None], KVCache, dict]:
-        # @yusen: Add attention-return flags and delta_heads at Module level; include aux dict in output
+        # @yusen: Add attention-return flags at Module level; include aux dict in output
         embedded = jax.tree.map(lambda e: e.astype(self.embed_dtype), embedded)
         mask = jnp.asarray(mask)[:, None, :, :]
         if adarms_cond is None:
@@ -509,8 +489,6 @@ class Module(nn.Module):
                 deterministic,
                 return_attention_heads,
                 return_attention_probs,
-                delta_heads,
-                delta_token_index,
             )
         else:
             embedded, kv_cache = self.layers(
@@ -522,8 +500,6 @@ class Module(nn.Module):
                 deterministic,
                 return_attention_heads,
                 return_attention_probs,
-                delta_heads,
-                delta_token_index,
             )
 
         assert all(e.dtype == jnp.dtype(self.embed_dtype) for e in embedded if e is not None)

@@ -234,8 +234,6 @@ class Pi0(_model.BaseModel):
         return_attention_probs: bool = False,
         return_state_heads: bool = False,
         return_state_and_first_action_heads: bool = False,
-        delta_heads: at.Float[at.Array, " h d"] | None = None,
-        delta_token_index: int | None = None,
     ) -> _model.Actions | tuple[_model.Actions, dict[str, at.Array]]:
         observation = _model.preprocess_observation(None, observation, train=False)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
@@ -299,8 +297,6 @@ class Pi0(_model.BaseModel):
                 positions=positions,
                 kv_cache=kv_cache,
                 adarms_cond=[None, adarms_cond],
-                delta_heads=delta_heads,
-                delta_token_index=delta_token_index,
             )
             assert prefix_out is None
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
