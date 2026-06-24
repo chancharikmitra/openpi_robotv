@@ -9,18 +9,21 @@ They must be generated **before** any head-tuning refactor and kept immutable af
 
 ### `knn_swap_green_red_cube.json` — KNN head-selection golden (Task 6 regression gate)
 
-**What it captures:** The exact head-selection result of `KNN_regression.py` on the
-`swap_green_red_cube` task attention dataset.
+**What it captures:** The exact head-selection result on the `swap_green_red_cube` task
+attention dataset. Originally produced by the legacy `KNN_regression.py` (now removed);
+reproducible via the `openpi.head_tuning.select` CLI, which Task 6's regression test gates
+against this golden.
 
-**Source command:**
+**Source command (current CLI):**
 ```bash
 cd /scr2/yusenluo/openpi_robotv
-KNN_UNIT_MODE=head \
-KNN_TARGET=20 \
-KNN_ATTN_H5=temp_data/swap_green_red_cube_pi05_action.h5 \
-KNN_OUT_TXT=tests/golden/knn_swap_green_red_cube.txt \
-conda run -n openpi python src/openpi/KNN_regression.py 2>&1 | tee tests/golden/knn_swap_run.log
+conda run -n openpi python -m openpi.head_tuning.select \
+  --attn-h5 temp_data/swap_green_red_cube_pi05_action.h5 \
+  --unit-mode head --target 20 \
+  --out tests/golden/heads_swap_green_red_cube.json
 ```
+(The `*.txt` / `*.log` files in this directory are gitignored remnants from the original
+legacy run; the JSON is the tracked golden the regression test reads.)
 
 **Expected output values (captured 2026-06-24):**
 - `cv_mse = 0.021498`  (tolerance: ±1e-4)
