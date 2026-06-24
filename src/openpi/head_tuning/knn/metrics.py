@@ -3,7 +3,7 @@ from typing import Optional
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 from sklearn.cross_decomposition import PLSRegression
-from .utils import build_feat_subset
+from .inference import build_feat_subset
 
 
 def pairwise_dist(q: np.ndarray, base: np.ndarray, metric: str, metric_ctx: dict | None = None) -> np.ndarray:

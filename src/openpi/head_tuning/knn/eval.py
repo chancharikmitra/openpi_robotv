@@ -3,7 +3,8 @@ from typing import Iterable, List, Optional, Tuple, Dict
 import numpy as np
 from tqdm import tqdm
 
-from .utils import build_feat_subset, weighted_avg, weighted_avg_batched, transform_episode
+from .inference import build_feat_subset, weighted_avg, weighted_avg_batched
+from .data import transform_episode
 from .metrics import pairwise_dist, pairwise_dist_matrix, build_metric_ctx_from_train
 
 
@@ -207,9 +208,9 @@ def evaluate_model_on_h5(
     - Supports multiple k in ks; if ks=None, evaluate only model.k.
     - Returns overall MSE, per-k MSE, and per-episode MSE.
     """
-    from .utils import load_episode_frames
+    from .data import load_episode_frames
     from .metrics import pairwise_dist_matrix
-    
+
     ks_list = sorted(set(list(ks))) if ks is not None else [model.k]
     per_k_squared_error = {int(k): 0.0 for k in ks_list}
     per_k_count         = {int(k): 0   for k in ks_list}
@@ -370,17 +371,16 @@ def evaluate_leave_one_frame_out_single_episode_weighted(
 
 def predict_episode(attn_h5: str, episode_key: str, model) -> np.ndarray:
     """Predict actions frame-by-frame for the specified episode (vectorized)."""
-    from .utils import load_episode_frames, transform_episode
+    from .data import load_episode_frames, transform_episode, frame_to_vec
     from .metrics import pairwise_dist_matrix
-    
+
     import h5py
     with h5py.File(attn_h5, "r") as f:
         attn, _ = load_episode_frames(f, episode_key)  # (F,18,8,256), (F,A) actions not needed here
     F = attn.shape[0]
-    
+
     if model.head_weights is not None:
         # Weighted mode: transform all heads and apply weights
-        from .utils import frame_to_vec
         Q_per_head = np.empty((F, len(model.preproc), model.d_per_head), dtype=np.float32)
         for t in range(F):
             attention_vector = frame_to_vec(attn[t])  # (144,256)
@@ -438,7 +438,8 @@ def predict_episode_from_activation(attn_or_frames: np.ndarray, model) -> np.nda
     Returns:
       - (A,) for single frame input, or (F, A) for multiple frames
     """
-    from .utils import transform_episode, frame_to_vec, weighted_avg_batched
+    from .data import transform_episode, frame_to_vec
+    from .inference import weighted_avg_batched
     from .metrics import pairwise_dist_matrix
 
     if attn_or_frames.ndim == 3 and attn_or_frames.shape == (18, 8, 256):

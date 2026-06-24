@@ -8,7 +8,8 @@ from sklearn.manifold import TSNE
 from tqdm import tqdm
 from typing import List, Optional, Iterable
 
-from .utils import build_dataset, build_feat_subset
+from .data import build_dataset
+from .inference import build_feat_subset
 from .metrics import pairwise_dist, build_global_metric_ctx_for_heads
 
 
