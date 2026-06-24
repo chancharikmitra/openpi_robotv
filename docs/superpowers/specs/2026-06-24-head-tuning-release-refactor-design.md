@@ -25,7 +25,7 @@ openpi 之上一个干净、可复现的 `head_tuning` 方法层，4 阶段 pipe
 ### 1.3 发布范围
 - **benchmark**: droid 为主、libero 保留；CALVIN 全部清除。
 - **选头方法**: 只发布 KNN 主方法。SAV / CMA / variance 三个替代方法清除。
-- **推理期 steering 不在范围**: `delta_heads` 推理 steering 不作为发布功能。`scripts/serve_policy.py` 整段回退上游；`gemma.py` / `policy.py` 里的 `delta_heads` 代码可保留但文档不宣传。
+- **推理期 steering 不在范围**: `delta_heads` 推理 steering 不发布，**代码移除**。`scripts/serve_policy.py` 整段回退上游；从 `gemma.py` / `policy.py` 摘掉 `delta_heads` 注入分支与参数。注意：`gemma.py` 里 `delta_heads` 与 `return_attention_heads`（extract 必需）在同一函数交织，须**外科式只摘 delta_heads、保住 activation 提取**。
 - **文档**: 只讲方法层贡献；openpi 原生 README 不动，仅加一节指向方法层文档。
 - **fork 基准点**: 上游 `Physical-Intelligence/openpi`，merge-base `5bff19b`（`git diff` 以此为基准）。
 
@@ -115,10 +115,10 @@ src/openpi/head_tuning/
 ### 5.1 方法必需的 plumbing（原地保留 + 统一标记）
 | 文件 | 改动 | 当前标记 |
 |---|---|---|
-| `models/gemma.py` | activation 返回 + `delta_heads` 注入 | 已有 `@yusen` |
+| `models/gemma.py` | activation 返回（`delta_heads` 注入移除，见 §5.2） | 已有 `@yusen` |
 | `models/pi0.py` | state/action 头激活分离提取 | 已有 `@yusen` |
-| `models/pi0_config.py` | `get_freeze_filter_always_freeze_expert_and_siglip` | **缺标记** |
-| `policies/policy.py` | `infer` 的 `return_attention*` / `delta_heads` | 部分 `@yusen` |
+| `models/pi0_config.py` | `get_freeze_filter_always_freeze_expert_and_siglip`（保留） | **缺标记** |
+| `policies/policy.py` | `infer` 的 `return_attention*`（`delta_heads` 参数移除，见 §5.2） | 部分 `@yusen` |
 | `training/optimizer.py` | `AdamWForHeadTuning` + `_create_head_tuning_mask` | **缺标记** |
 | `scripts/train.py` | `_create_masked_optimizer_for_head_tuning` + masked update | **缺标记** |
 
@@ -128,6 +128,7 @@ src/openpi/head_tuning/
 
 ### 5.2 塞进核心文件的 research 垃圾（清理 / 回退）
 - `scripts/serve_policy.py`：351 行私有路径 `EnvMode` + Checkpoint（`/darrell_robotics/...`）——**整段回退到上游原状**。
+- `delta_heads` steering：从 `gemma.py`（`Attention.__call__` 的注入分支、`delta_heads`/`delta_token_index` 参数与其 scan/vmap 透传）和 `policy.py`（`infer` 的 `delta_heads` 参数及 plumbing）**外科式移除**；保留 `return_attention_heads`/`return_attention_probs` 路径不动。
 - `training/config.py`：几十条实验 TrainConfig + 死注释——裁成 droid/libero 各 1 条示例（与第 3.3 节一致）。
 - `scripts/compute_norm_stats.py`：17 行小改——核查是否方法必需，非必需则回退上游。
 
@@ -178,6 +179,7 @@ checkpoints/
 - **select**: 在现有 attn H5 上跑重构后的 `select`，复现已知结果——`swap_green_red_cube_20` 的 `best_k=30, cv_mse=0.021498` 及那组 20 个 head。
 - **finetune**: steering TrainConfig 能正常 build，`scripts/train.py` 能构出 masked optimizer（几步 smoke run，不跑满训练）。
 - **fork delta**: `git diff 5bff19b HEAD -- scripts/serve_policy.py` 为空；其余核心文件 diff 与 `UPSTREAM_CHANGES.md` 一一对应。
+- **delta_heads 移除安全性**: 移除后 `gemma.py` / `policy.py` 仍能正常返回 activation——靠上面 extract 逐值比对回归保证（activation 输出不变即证明只摘了 steering）。
 - 现有测试（`transforms_test.py` 等）保持绿。
 
 ---
@@ -188,6 +190,6 @@ checkpoints/
 2. `select.py` 瘦 CLI + `heads.json` 输出；用 `swap_green_red_cube` 复现 cv_mse 验证。
 3. `extract.py` + adapters（base/droid/libero）；逐值比对验证。
 4. `configs.py` 工厂 + droid/libero 示例 config；清理 `config.py` 死注释；finetune smoke。
-5. openpi 核心改动处理：补齐统一标记、回退 `serve_policy.py`、核查 `compute_norm_stats.py`、生成 `UPSTREAM_CHANGES.md`。
+5. openpi 核心改动处理：移除 `delta_heads`（外科式，extract 比对回归验证 activation 提取未坏）、补齐统一标记、回退 `serve_policy.py`、核查 `compute_norm_stats.py`、生成 `UPSTREAM_CHANGES.md`。
 6. 执行清理清单 + 更新 `.gitignore`。
 7. 写 `head_tuning/README.md` + 顶层 README 指引。
