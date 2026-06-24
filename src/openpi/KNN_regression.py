@@ -127,14 +127,14 @@ PRINT_HEAD_RANKINGS  = True      # print detailed head rankings and MSE statisti
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 # Import commonly used utilities directly for readability
-from openpi.knn.utils import (
+from openpi.head_tuning.knn.utils import (
     build_dataset, build_feat_subset,
     rank_single_heads, simple_topk_select, greedy_forward_select, reinforce_select_heads, learn_head_weights,
     get_action_labels, HeadPreprocessor, load_episode_frames,
 )
-from openpi.knn.metrics import build_global_metric_ctx_for_heads
-from openpi.knn.eval import evaluate_model_on_h5, evaluate_leave_one_episode_out, predict_episode, predict_episode_from_activation
-from openpi.knn.viz import knn_overlap_and_plots
+from openpi.head_tuning.knn.metrics import build_global_metric_ctx_for_heads
+from openpi.head_tuning.knn.eval import evaluate_model_on_h5, evaluate_leave_one_episode_out, predict_episode, predict_episode_from_activation
+from openpi.head_tuning.knn.viz import knn_overlap_and_plots
 
 # Global metric caches for METRIC_SCOPE=="global"
 _METRIC_CTX_CACHE = {}

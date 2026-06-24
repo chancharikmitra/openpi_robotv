@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from tqdm import tqdm
 
 # Import existing utilities
-from openpi.knn.utils import build_dataset, PreprocessedData
+from openpi.head_tuning.knn.utils import build_dataset, PreprocessedData
 
 
 @dataclass 
