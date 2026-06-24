@@ -103,8 +103,21 @@ src/openpi/head_tuning/
 2. `KNN_regression.py` 的编排逻辑（`fit_knn_reg_with_heads` + `KnnRegModel`）上提到 `knn/model.py`。
 3. `select.py` 只剩一个 tyro CLI。
 4. **选头算法只保留 topk + best_add**（config 实际用 topk，best_add 为 greedy 备用）；删除 `reinforce_select_heads` 与 `learn_head_weights`。
-5. `eval.py` 裁掉没用到的 torch LOEO 变体（`compute_loeo_mse_torch*`，若确认未被引用）。
-6. `metrics.py` / `viz.py` 保留并清理。
+5. `eval.py` 裁掉没用到的 torch LOEO 变体（`compute_loeo_mse_torch*`）。
+
+### 4.1 移除未用的降维 / 度量学习机制（方法实际只用 cosine-KNN）
+方法实际配置为 `DIST_METRIC="cosine"`、`USE_PCA=False`、`USE_ZSCORE=False`，以下全部为论文期试验、未进入主方法，**整体移除**：
+- **度量**：只保留 `cosine`（主）+ `euclidean`（零成本基线，纯函数）。删除 `whiten` / `proj` / `pls` 及其 `build_metric_ctx_from_train` / `build_global_metric_ctx_for_heads`、`PLSRegression` / `Ridge` 依赖。`metrics.py` 收缩为两个无状态距离函数。
+- **降维 / 归一化**：删除 PCA（`USE_PCA` / `PCA_D` / 每头 PCA）、z-score（`USE_ZSCORE`）、`HeadPreprocessor` 的 scaler/PCA 逻辑（退化为直通或删除）。
+- **连带清除的参数**：`metric_ctx*` / `metric_scope` / `pca_dim` / `proj_alpha` / `pls_components` / `WHITEN_PCA_DIM` / `GLOBAL_METRIC_FULLSPACE` —— 从 `eval.py` / `selection.py` / `data.py` / `model.py` 的函数签名里一并去掉（这些参数缠绕在约 350 处引用，移除后 KNN 调用链大幅变直）。
+- 影响：`metrics.py`（~一半是 whiten/proj/pls）、`eval.py`（53 处）、`utils.py`（132 处）相应瘦身。
+
+> 若后续确认 `euclidean` 也不需要，可进一步收成 cosine-only。
+
+### 4.2 Paper-release 专业化标准（适用于全部 head_tuning/ 新代码）
+- 注释 / docstring 全英文（`KNN_regression.py` 现有 27 处中文注释清理）。
+- 完整类型标注、模块级 docstring、无死代码 / 无注释掉的代码块 / 无 `breakpoint()` 调试残留。
+- CLI 用 tyro dataclass，参数有 help 文本；公开 API 经 `__init__.py` 精选导出。
 
 ---
 
@@ -186,8 +199,8 @@ checkpoints/
 
 ## 9. 实现顺序建议
 
-1. 建子包骨架 + 把 `knn/` 迁入并按职责拆分（data/inference/selection/model），裁掉 reinforce/learn_weights 与未用 torch 变体。
-2. `select.py` 瘦 CLI + `heads.json` 输出；用 `swap_green_red_cube` 复现 cv_mse 验证。
+1. 建子包骨架 + 把 `knn/` 迁入并按职责拆分（data/inference/selection/model），裁掉 reinforce/learn_weights、未用 torch 变体、以及 PCA/zscore/whiten/proj/pls 度量学习机制（§4.1）。
+2. `select.py` 瘦 CLI + `heads.json` 输出；用 `swap_green_red_cube` 复现 cv_mse 验证（cosine、无 PCA，移除未用机制不应改变结果）。
 3. `extract.py` + adapters（base/droid/libero）；逐值比对验证。
 4. `configs.py` 工厂 + droid/libero 示例 config；清理 `config.py` 死注释；finetune smoke。
 5. openpi 核心改动处理：移除 `delta_heads`（外科式，extract 比对回归验证 activation 提取未坏）、补齐统一标记、回退 `serve_policy.py`、核查 `compute_norm_stats.py`、生成 `UPSTREAM_CHANGES.md`。
