@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -100,8 +99,10 @@ def _load_single_episode(parquet_path: Path, prompt: str):
             "observation/image":          _decode_img(images[i]),
             "observation/wrist_image":    _decode_img(wrist_images[i]),
             "observation/state":          states[i],
-            # Alias so base.run_inference_and_save can extract key-frame features
-            # with the shared (joint_pos, gripper_pos) signature.
+            # NOTE: these alias keys are only consumed by the keyframe function
+            # (libero_key_idcs via base.run_inference_and_save) to satisfy the
+            # shared (joint_pos, gripper_pos) signature; they are never forwarded
+            # to policy.infer.
             "observation/joint_position": states[i],
             "observation/gripper_position": states[i, 6:7],  # gripper col of state
             "prompt":                     prompt,
@@ -111,24 +112,37 @@ def _load_single_episode(parquet_path: Path, prompt: str):
 
 def load_libero_episodes(
     src: str,
-    task_slug: str,
+    task_prompt: str = "",
     max_episodes: int | None = None,
 ) -> dict:
     """Load LIBERO episodes from a LeRobot v2.0 parquet dataset.
 
-    Reads ``meta/info.json``, ``meta/tasks.jsonl``, and
-    ``meta/episodes.jsonl`` to enumerate episodes, then loads each parquet
-    shard under ``data/``.
+    Reads ``meta/info.json`` and ``meta/episodes.jsonl`` to enumerate
+    episodes, then loads each parquet shard under ``data/``.
+
+    Each episode's language prompt is determined as follows:
+
+    - If *task_prompt* is non-empty, it is used as the prompt for **all**
+      episodes (useful when you want to override the dataset's own labels).
+    - Otherwise (default), the prompt is read from the per-episode ``tasks``
+      field in ``meta/episodes.jsonl`` (a LeRobot v2.0 list of task strings),
+      specifically ``ep["tasks"][0]``.
+
+    The top-level key in the returned dict is the prompt string for each
+    episode; episodes that share the same prompt are grouped under the same
+    key.
 
     Args:
         src:          Root directory of the LeRobot dataset (contains
                       ``data/`` and ``meta/``).
-        task_slug:    Short identifier used as the top-level H5 group name
-                      (replaces ``LIBERO_TASK_SLUG``).
+        task_prompt:  Optional override prompt.  When non-empty, every episode
+                      uses this string as its prompt and H5 group key.  When
+                      empty (default), each episode's prompt is derived from
+                      the per-episode ``tasks`` field in ``meta/episodes.jsonl``.
         max_episodes: Maximum number of episodes to load.  ``None`` means all.
 
     Returns:
-        Nested dict ``{task_slug: {ep_idx: {"observations": [...],
+        Nested dict ``{prompt: {ep_idx: {"observations": [...],
         "actions": [...], "action_dict_list": [...]}}}`` where ``ep_idx``
         matches the original ``episode_index`` from the dataset metadata.
     """
@@ -147,10 +161,16 @@ def load_libero_episodes(
         if max_episodes is not None and ep_counter >= max_episodes:
             break
         ep_idx = ep["episode_index"]
-        assert len(ep["tasks"]) == 1, (
-            f"ep {ep_idx} has {len(ep['tasks'])} tasks; LIBERO subset assumed single-task"
-        )
-        prompt = ep["tasks"][0]
+
+        if task_prompt:
+            # Caller-supplied override: use the same prompt for every episode.
+            prompt = task_prompt
+        else:
+            # Default: derive prompt from the per-episode tasks field (LeRobot v2.0).
+            assert len(ep["tasks"]) == 1, (
+                f"ep {ep_idx} has {len(ep['tasks'])} tasks; LIBERO subset assumed single-task"
+            )
+            prompt = ep["tasks"][0]
 
         parquet_rel = info["data_path"].format(
             episode_chunk=ep_idx // info["chunks_size"],
@@ -160,19 +180,18 @@ def load_libero_episodes(
         obs_list, actions = _load_single_episode(parquet_path, prompt)
 
         n = len(obs_list)
-        states = np.stack([o["observation/state"] for o in obs_list])
         action_dict_list = [
             {"act_full": np.asarray(actions[i], dtype=np.float32)}
             for i in range(n)
         ]
 
-        episodes: dict[int, dict[str, list]] = data.get(task_slug, {})
+        episodes: dict[int, dict[str, list]] = data.get(prompt, {})
         episodes[ep_idx] = {
             "observations":    obs_list,
             "actions":         [actions[i] for i in range(n)],
             "action_dict_list": action_dict_list,
         }
-        data[task_slug] = episodes
+        data[prompt] = episodes
 
         ep_counter += 1
 

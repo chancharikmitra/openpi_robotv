@@ -10,12 +10,11 @@ Usage examples::
         --task-prompt "swap green red cube" \\
         --max-episodes 2
 
-    # LIBERO benchmark (parquet input)
+    # LIBERO benchmark (parquet input — task-prompt is optional)
     python -m openpi.head_tuning.extract \\
         --benchmark libero \\
         --src temp_data/libero10_task0_20 \\
         --out-h5 libero_activations.h5 \\
-        --task-prompt libero10_task0 \\
         --max-episodes 5
 """
 from __future__ import annotations
@@ -50,8 +49,11 @@ class Args:
     """Path of the output HDF5 file to write."""
 
     task_prompt: str = ""
-    """Language instruction string.  For droid: used as task-name key.
-    For libero: used as the top-level HDF5 group slug."""
+    """Language instruction string.  For droid: required; used as the task-name
+    key in the output HDF5 (overrides any embedded instruction).  For libero:
+    optional override — when non-empty, every episode uses this string as its
+    prompt; when empty (default), each episode's prompt is read from the
+    per-episode ``tasks`` field in ``meta/episodes.jsonl``."""
 
     max_episodes: int = 200
     """Maximum number of episodes to process (0 = all)."""
@@ -61,13 +63,23 @@ class Args:
     If False, process all frames."""
 
 
+_BENCHMARK_CONFIG: dict[str, tuple[str, str]] = {
+    "droid":  ("pi05_droid",  "gs://openpi-assets/checkpoints/pi05_droid"),
+    "libero": ("pi05_libero", "gs://openpi-assets/checkpoints/pi05_libero"),
+}
+
+
 def main(args: Args) -> None:
     """Load policy, load episodes, run inference, and write activations to H5."""
     os.environ.setdefault("OPENPI_DATA_HOME", "/scr2/yusenluo/openpi_robotv/.cache/openpi")
 
-    cfg = _config.get_config("pi05_droid")
-    ckpt = download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid")
-    download.maybe_download("gs://openpi-assets/checkpoints/pi05_droid/assets")
+    if args.benchmark not in _BENCHMARK_CONFIG:
+        raise ValueError(f"Unknown benchmark {args.benchmark!r}; must be 'droid' or 'libero'.")
+
+    config_name, gcs_dir = _BENCHMARK_CONFIG[args.benchmark]
+    cfg = _config.get_config(config_name)
+    ckpt = download.maybe_download(gcs_dir)
+    download.maybe_download(gcs_dir + "/assets")
     policy = policy_config.create_trained_policy(cfg, ckpt)
 
     max_ep = args.max_episodes if args.max_episodes > 0 else None
