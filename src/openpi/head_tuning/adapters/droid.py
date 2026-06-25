@@ -1,4 +1,4 @@
-"""DROID H5 benchmark adapter for Stage-1 activation extraction.
+"""DROID H5 setup adapter for Stage-1 activation extraction.
 
 Loads episodes from a DROID-format HDF5 file (top-level group per episode,
 numeric step subgroups) and defines the DROID-specific keyframe selection rule

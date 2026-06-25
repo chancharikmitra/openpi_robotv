@@ -12,7 +12,7 @@ The changes implement a three-stage **attention-head selection and finetuning** 
 
 1. **Extract** — run inference and collect per-head attention activations from specific layers.
 2. **Select** — score and rank heads using KNN-based probing; identify the most task-relevant heads.
-3. **Finetune** — train only the selected heads (and their KV projections) with a masked AdamW optimizer.
+3. **Finetune** — train the selected heads' attention LoRA (query + output projections) together with the main LLM's FFN LoRA adapters and the flow-matching action head (timestep MLP + action projections), using a masked AdamW optimizer. The trainable set is ~19.6 M params, dominated (~81%) by the FFN LoRA. KV projections, non-selected heads, the action expert, and the vision encoder stay frozen.
 
 ---
 
@@ -86,7 +86,7 @@ The changes implement a three-stage **attention-head selection and finetuning** 
 - **`AdamWForHeadTuning` class** (line ~108): New `@dataclasses.dataclass(frozen=True)` implementing `OptimizerConfig`. Fields: standard AdamW hyperparameters (`b1`, `b2`, `eps`, `weight_decay`, `clip_gradient_norm`) plus `trainable_head_indices: list[tuple[int, int]]`, `freeze_kv: bool`, `only_attention: bool`, `freeze_mlp: bool`. The `create()` method is identical to `AdamW.create()`; the actual masking is applied externally by `_create_masked_optimizer_for_head_tuning` in `scripts/train.py`.
 - **`_create_head_tuning_mask()` function** (line ~143): New function that takes `params` (an `nnx.State` pytree), `trainable_heads: list[tuple[int, int]]`, and optional `freeze_kv`/`only_attention`/`freeze_mlp` flags. Returns a pytree of `int8` arrays (0=frozen, 1=trainable) with the same structure as `params.to_pure_dict()`. Uses `jax.tree_util.tree_map_with_path` to inspect each parameter's path string and determine: (a) whether it is an attention weight at all, (b) which axis corresponds to layer/head, (c) whether to mask by individual head index or by layer-level KV sharing (MQA case).
 
-**Why / Stage:** Finetune — `AdamWForHeadTuning` is the optimizer config for the head-finetuning stage; `_create_head_tuning_mask` constructs the binary mask that zeroes gradients for all non-selected heads.
+**Why / Stage:** Finetune — `AdamWForHeadTuning` is the optimizer config for the head-finetuning stage; `_create_head_tuning_mask` constructs the binary mask that keeps the selected heads' attention-LoRA slices trainable and — because the example configs pass `only_attention=False` — leaves the FFN LoRA trainable too, zeroing gradients for everything else (KV, non-selected heads, base weights).
 
 **Markers:** `# [head_tuning] BEGIN` around the import block, the `AdamWForHeadTuning` class, and `_create_head_tuning_mask`.
 

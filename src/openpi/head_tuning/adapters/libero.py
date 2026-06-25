@@ -1,4 +1,4 @@
-"""LIBERO parquet benchmark adapter for Stage-1 activation extraction.
+"""LIBERO parquet setup adapter for Stage-1 activation extraction.
 
 Loads episodes from a LeRobot v2.0 parquet dataset (LIBERO subset) and defines
 the LIBERO-specific keyframe selection rule (EE-pose static + gripper-action

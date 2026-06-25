@@ -1,6 +1,6 @@
 """Shared inference and H5 serialization logic for Stage-1 activation extraction.
 
-This module contains benchmark-agnostic code:
+This module contains setup-agnostic code:
 - ``save_attn_blocks``: write the standard attention datasets into an open HDF5 group.
 - ``run_inference_and_save``: iterate episodes, select key frames, call ``policy.infer``,
   and persist activations under the standard HDF5 path scheme::
@@ -122,7 +122,7 @@ def run_inference_and_save(
         policy: A trained ``openpi`` policy object with an ``.infer()`` method.
         episodes: Nested dict ``{task_name: {ep_idx: {"observations": [...],
             "actions": [...], "action_dict_list": [...]}}}`` as returned by a
-            benchmark adapter's ``load_*_episodes`` function.
+            setup adapter's ``load_*_episodes`` function.
         out_h5: Path of the output HDF5 file to create (mode ``"w"``).
         key_fn: Optional callable ``(joint_pos, gripper_pos, actions) ->
             np.ndarray`` that returns the sorted integer indices of key frames

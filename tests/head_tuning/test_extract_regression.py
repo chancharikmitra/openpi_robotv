@@ -36,7 +36,7 @@ def test_extract_droid_matches_golden(tmp_path: pathlib.Path) -> None:
             sys.executable,
             "-m",
             "openpi.head_tuning.extract",
-            "--benchmark",
+            "--setup",
             "droid",
             "--input-h5",
             matches[0],

@@ -2,18 +2,18 @@
 
 Usage examples::
 
-    # DROID benchmark (H5 input)
+    # DROID setup (H5 input)
     python -m openpi.head_tuning.extract \\
-        --benchmark droid \\
-        --input-h5 temp_data/swap_green_red_cube_20.h5 \\
+        --setup droid \\
+        --input-h5 path/to/swap_green_red_cube_20.h5 \\
         --out-h5 activations.h5 \\
         --task-prompt "swap green red cube" \\
         --max-episodes 2
 
-    # LIBERO benchmark (parquet input — task-prompt is optional)
+    # LIBERO setup (parquet input — task-prompt is optional)
     python -m openpi.head_tuning.extract \\
-        --benchmark libero \\
-        --src temp_data/libero10_task0_20 \\
+        --setup libero \\
+        --src path/to/libero10_task0_20 \\
         --out-h5 libero_activations.h5 \\
         --max-episodes 5
 """
@@ -35,8 +35,8 @@ from openpi.training import config as _config
 class Args:
     """Command-line arguments for the activation-extraction CLI."""
 
-    benchmark: str
-    """Benchmark to extract activations for: ``"droid"`` or ``"libero"``."""
+    setup: str
+    """Robot/data setup to extract activations for: ``"droid"`` or ``"libero"``."""
 
     input_h5: str = ""
     """(droid only) Path to the input DROID HDF5 file."""
@@ -58,11 +58,11 @@ class Args:
     """Maximum number of episodes to process (0 = all)."""
 
     use_keyframe: bool = True
-    """If True, apply the benchmark-specific keyframe selection rule.
+    """If True, apply the setup-specific keyframe selection rule.
     If False, process all frames."""
 
 
-_BENCHMARK_CONFIG: dict[str, tuple[str, str]] = {
+_SETUP_CONFIG: dict[str, tuple[str, str]] = {
     "droid":  ("pi05_droid",  "gs://openpi-assets/checkpoints/pi05_droid"),
     "libero": ("pi05_libero", "gs://openpi-assets/checkpoints/pi05_libero"),
 }
@@ -70,10 +70,10 @@ _BENCHMARK_CONFIG: dict[str, tuple[str, str]] = {
 
 def main(args: Args) -> None:
     """Load policy, load episodes, run inference, and write activations to H5."""
-    if args.benchmark not in _BENCHMARK_CONFIG:
-        raise ValueError(f"Unknown benchmark {args.benchmark!r}; must be 'droid' or 'libero'.")
+    if args.setup not in _SETUP_CONFIG:
+        raise ValueError(f"Unknown setup {args.setup!r}; must be 'droid' or 'libero'.")
 
-    config_name, gcs_dir = _BENCHMARK_CONFIG[args.benchmark]
+    config_name, gcs_dir = _SETUP_CONFIG[args.setup]
     cfg = _config.get_config(config_name)
     ckpt = download.maybe_download(gcs_dir)
     download.maybe_download(gcs_dir + "/assets")
@@ -81,14 +81,14 @@ def main(args: Args) -> None:
 
     max_ep = args.max_episodes if args.max_episodes > 0 else None
 
-    if args.benchmark == "droid":
+    if args.setup == "droid":
         episodes = _droid.load_droid_episodes(args.input_h5, args.task_prompt, max_ep)
         key_fn = _droid.droid_key_idcs
-    elif args.benchmark == "libero":
+    elif args.setup == "libero":
         episodes = _libero.load_libero_episodes(args.src, args.task_prompt, max_ep)
         key_fn = _libero.libero_key_idcs
     else:
-        raise ValueError(f"Unknown benchmark {args.benchmark!r}; must be 'droid' or 'libero'.")
+        raise ValueError(f"Unknown setup {args.setup!r}; must be 'droid' or 'libero'.")
 
     _base.run_inference_and_save(
         policy,

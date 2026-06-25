@@ -674,25 +674,37 @@ _CONFIGS = [
     # repo_id and head indices produced by openpi.head_tuning.select.      #
     # ------------------------------------------------------------------ #
 
-    # DROID example: swap green and red cube task (pi05, 20 episodes)
+    # DROID example: swap green and red cube task (pi05, 20 episodes).
+    # repo_id is a custom DROID-setup dataset (our own teleop collection, DROID format).
+    # Before training, compute norm stats: scripts/compute_norm_stats.py pi05_head_tuning_droid_example
     make_head_tuning_config(
         name="pi05_head_tuning_droid_example",
-        repo_id="yusenluo9z/swap_green_red_cube_20",
+        repo_id="<your-hf-username>/swap_green_red_cube_20",
         heads=[
             (9, 7), (9, 4), (8, 4), (9, 2), (5, 7), (7, 6), (8, 5), (9, 1), (7, 1), (1, 5),
             (3, 2), (9, 0), (3, 1), (9, 5), (1, 6), (4, 7), (7, 0), (8, 6), (5, 3), (1, 3),
         ],  # KNN head selection, target=20, swap_green_red_cube_20
+        setup="droid",  # "droid" (default) or "libero"
+        # Masking knobs (shown explicitly; these are also the defaults). Trains the
+        # selected heads' attn LoRA + main-LLM FFN LoRA + flow-matching action head.
+        # only_attention=True -> attention LoRA only; freeze_mlp=True -> keep heads, drop FFN LoRA.
+        freeze_kv=True,
+        only_attention=False,
+        freeze_mlp=False,
     ),
 
-    # Libero example: libero10 task-0 subset (pi05, 20 episodes)
+    # Libero example: libero10 task-0 subset (pi05, 20 episodes).
     make_head_tuning_config(
         name="pi05_head_tuning_libero_example",
-        repo_id="yusenluo9z/libero10_task0_20",
+        repo_id="<your-hf-username>/libero10_task0_20",
         heads=[
             (9, 7), (9, 4), (8, 4), (9, 2), (5, 7), (7, 6), (8, 5), (9, 1), (7, 1), (1, 5),
             (3, 2), (9, 0), (3, 1), (9, 5), (1, 6), (4, 7), (7, 0), (8, 6), (5, 3), (1, 3),
         ],  # representative 20-head set for illustrative purposes
-        benchmark="libero",
+        setup="libero",
+        freeze_kv=True,
+        only_attention=False,
+        freeze_mlp=False,
     ),
 
 
