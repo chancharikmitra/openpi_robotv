@@ -62,7 +62,7 @@ grep -rn "\[head_tuning\]" src/ scripts/train.py
     mitra2026mechanistic,
     title={Mechanistic Finetuning of Vision-Language-Action Models via Few-Shot Demonstrations},
     author={Chancharik Mitra and Yusen Luo and Raj Saravanan and Dantong Niu and Anirudh Pai and Jesse Thomason and Trevor Darrell and Abrar Anwar and Deva Ramanan and Roei Herzig},
-    booktitle={European Conference on Computer Vision (ECCV)},
+    booktitle={19th European Conference on Computer Vision (ECCV)},
     year={2026}
 }
 ```
