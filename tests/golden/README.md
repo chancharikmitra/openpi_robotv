@@ -63,21 +63,29 @@ input episodes (~120 MB), not 2. The new `extract.py` (Task 7) adds a working
 **gitignored** (`tests/golden/*.h5`, `tests/golden/*.log`) — large binaries must not enter
 the release repo's git history. Only the JSON/txt/README are tracked.
 
-**Source command:**
+**Source command (current — regenerated under the uv environment on 2026-07-22):**
 ```bash
 cd /scr2/yusenluo/openpi_robotv
-TASK=swap_green_red_cube \
-INPUT_H5=temp_data/swap_green_red_cube_20.h5 \
-ATTN_H5=tests/golden/extract_droid_smoke.h5 \
-conda run -n openpi python src/openpi/generate_activation_dataset_on_robot.py 2>&1
+OPENPI_DATA_HOME=/scr2/yusenluo/openpi_robotv/.cache/openpi \
+uv run python -m openpi.head_tuning.extract \
+  --setup droid \
+  --input-h5 temp_data/swap_green_red_cube_20.h5 \
+  --out-h5 tests/golden/extract_droid_smoke.h5 \
+  --task-prompt "swap green red cube" \
+  --max-episodes 20
 ```
+(The `--task-prompt` string must match the one the regression test passes, since it is
+used as the task-name key in the output HDF5.)
 
 **Purpose:** Task 7 (`extract` adapters + CLI regression gate) must reproduce the same
 per-frame activations up to floating-point tolerance.
 
-**Environment:** conda env `openpi`, **GPU required** (A6000 or similar; checkpoint
-downloaded from `gs://openpi-assets/checkpoints/pi05_droid`). Checkpoint is cached to
-`.cache/openpi/openpi-assets/` after first download.
+**Environment:** the release **uv** environment (`transformers==4.53.2`), **GPU required**;
+checkpoint downloaded from `gs://openpi-assets/checkpoints/pi05_droid`. NOTE: this golden
+is environment-specific at the `rtol/atol=1e-5` tolerance the test uses. It was regenerated
+under uv because the earlier conda-generated golden (`transformers==4.48.1`) differed from
+the uv environment at bf16 granularity (max abs diff ~0.0625). The difference does not
+affect head selection (the `select` stage reproduces its golden under both environments).
 
 **Checkpoint:** `gs://openpi-assets/checkpoints/pi05_droid` (pi0 DROID model)
 
