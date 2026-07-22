@@ -22,24 +22,39 @@ Head relevance is scored with **Leave-One-Episode-Out KNN regression over frozen
 
 ## Quickstart
 
-Install the `openpi` environment first (see [Built on openpi](#built-on-openpi)), then:
+### Environment setup
+
+Requires an NVIDIA GPU and Python 3.11 (tested on Ubuntu 22.04). We use [uv](https://docs.astral.sh/uv/) to manage dependencies:
+
+```bash
+# if you did not clone with --recurse-submodules:
+git submodule update --init --recursive
+
+# GIT_LFS_SKIP_SMUDGE=1 is required to pull LeRobot as a dependency
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+```
+
+`uv run` (used below) automatically runs inside this environment — no manual activation needed. For GPU memory requirements, PyTorch support, Docker, and troubleshooting, see [Built on openpi](#built-on-openpi).
+
+### Pipeline
 
 ```bash
 # 1. extract per-head activations from your few-shot demos
-conda run -n openpi python -m openpi.head_tuning.extract \
+uv run python -m openpi.head_tuning.extract \
     --setup droid --input-h5 path/to/demos.h5 \
     --out-h5 activations.h5 --task-prompt "<your task>"
 
 # 2. select the top-20 task-relevant heads
-conda run -n openpi python -m openpi.head_tuning.select \
+uv run python -m openpi.head_tuning.select \
     --attn-h5 activations.h5 --out heads.json --target 20
 
 # 3. register a config in src/openpi/training/config.py via make_head_tuning_config(...)
 
 # 4. compute norm stats, then fine-tune
-conda run -n openpi python scripts/compute_norm_stats.py <config_name>
+uv run python scripts/compute_norm_stats.py <config_name>
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
-conda run -n openpi python scripts/train.py <config_name> --exp-name run_001 --overwrite
+uv run python scripts/train.py <config_name> --exp-name run_001 --overwrite
 ```
 
 ## Built on openpi

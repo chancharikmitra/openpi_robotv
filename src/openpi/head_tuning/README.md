@@ -7,12 +7,13 @@ Stage 1 – Extract   →   Stage 2 – Select   →   Stage 3 – Config   → 
 activations.h5           heads.json              TrainConfig             checkpoint/
 ```
 
-> **Environment:** all commands must run inside the `openpi` conda environment.
+> **Environment:** all commands assume the [uv](https://docs.astral.sh/uv/) environment is set up (see the [top-level README](../../../README.md#environment-setup)):
 > ```bash
-> conda activate openpi
-> # or, non-interactively:
-> conda run -n openpi python ...
+> git submodule update --init --recursive          # if not cloned with --recurse-submodules
+> GIT_LFS_SKIP_SMUDGE=1 uv sync                     # GIT_LFS_SKIP_SMUDGE=1 pulls LeRobot
+> GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 > ```
+> `uv run python ...` (used below) runs inside this environment automatically.
 
 ---
 
@@ -30,7 +31,7 @@ Input: an HDF5 file of demonstrations **collected on our own custom DROID-style 
 Policy checkpoint loaded automatically: `gs://openpi-assets/checkpoints/pi05_droid/params`.
 
 ```bash
-conda run -n openpi python -m openpi.head_tuning.extract \
+uv run python -m openpi.head_tuning.extract \
     --setup droid \
     --input-h5 path/to/swap_green_red_cube_20.h5 \
     --out-h5   activations_droid.h5 \
@@ -53,7 +54,7 @@ Input: a LeRobot v2.0 dataset directory (produced by `scripts/extract_libero_tas
 Policy checkpoint loaded automatically: `gs://openpi-assets/checkpoints/pi05_libero/params`.
 
 ```bash
-conda run -n openpi python -m openpi.head_tuning.extract \
+uv run python -m openpi.head_tuning.extract \
     --setup libero \
     --src      path/to/libero10_task0_20 \
     --out-h5   activations_libero.h5 \
@@ -78,7 +79,7 @@ conda run -n openpi python -m openpi.head_tuning.extract \
 Runs **Leave-One-Episode-Out KNN regression** (cosine distance by default) over the activations produced in Stage 1.  Each of the 144 candidate units (heads or layers) is evaluated by how well its activation feature predicts the action label for held-out episodes; the top-scoring units are written to a JSON file.
 
 ```bash
-conda run -n openpi python -m openpi.head_tuning.select \
+uv run python -m openpi.head_tuning.select \
     --attn-h5 activations_droid.h5 \
     --out      heads.json \
     --unit-mode head \
@@ -189,7 +190,7 @@ This follows the standard openpi finetuning flow — **two steps: compute norm s
 `scripts/train.py` errors out if norm stats are missing.  Compute them for your config first:
 
 ```bash
-conda run -n openpi python scripts/compute_norm_stats.py pi05_head_tuning_droid_example
+uv run python scripts/compute_norm_stats.py pi05_head_tuning_droid_example
 ```
 
 This reads the `repo_id` baked into the config (e.g. `<your-hf-username>/swap_green_red_cube_20`), streams the dataset, and writes `norm_stats.json` into the config's assets directory keyed by `repo_id`.  Re-run it whenever you change `repo_id`.
@@ -198,7 +199,7 @@ This reads the `repo_id` baked into the config (e.g. `<your-hf-username>/swap_gr
 
 ```bash
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
-conda run -n openpi python scripts/train.py pi05_head_tuning_droid_example \
+uv run python scripts/train.py pi05_head_tuning_droid_example \
     --exp-name my_experiment \
     --overwrite
 ```
@@ -259,14 +260,14 @@ For the complete, authoritative list of every changed line and its rationale see
 
 ```bash
 # 1. Extract activations (DROID example)
-conda run -n openpi python -m openpi.head_tuning.extract \
+uv run python -m openpi.head_tuning.extract \
     --setup droid \
     --input-h5  path/to/my_task_20.h5 \
     --out-h5    activations.h5 \
     --task-prompt "pick up red cube"
 
 # 2. Select the top-20 heads
-conda run -n openpi python -m openpi.head_tuning.select \
+uv run python -m openpi.head_tuning.select \
     --attn-h5 activations.h5 \
     --out      heads.json \
     --target   20
@@ -280,11 +281,11 @@ conda run -n openpi python -m openpi.head_tuning.select \
 #    )
 
 # 4a. Compute norm stats for the config's dataset (required)
-conda run -n openpi python scripts/compute_norm_stats.py my_task_head_tuning
+uv run python scripts/compute_norm_stats.py my_task_head_tuning
 
 # 4b. Fine-tune
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
-conda run -n openpi python scripts/train.py my_task_head_tuning \
+uv run python scripts/train.py my_task_head_tuning \
     --exp-name run_001 \
     --overwrite
 ```
