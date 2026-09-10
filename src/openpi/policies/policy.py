@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from openpi_client import base_policy as _base_policy
+import torch
 from typing_extensions import override
 
 from openpi import transforms as _transforms
@@ -30,36 +31,124 @@ class Policy(BasePolicy):
         output_transforms: Sequence[_transforms.DataTransformFn] = (),
         sample_kwargs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        pytorch_device: str = "cpu",
+        is_pytorch: bool = False,
     ):
-        self._sample_actions = nnx_utils.module_jit(model.sample_actions)
+        """Initialize the Policy.
+
+        Args:
+            model: The model to use for action sampling.
+            rng: Random number generator key for JAX models. Ignored for PyTorch models.
+            transforms: Input data transformations to apply before inference.
+            output_transforms: Output data transformations to apply after inference.
+            sample_kwargs: Additional keyword arguments to pass to model.sample_actions.
+            metadata: Additional metadata to store with the policy.
+            pytorch_device: Device to use for PyTorch models (e.g., "cpu", "cuda:0").
+                          Only relevant when is_pytorch=True.
+            is_pytorch: Whether the model is a PyTorch model. If False, assumes JAX model.
+        """
+        self._model = model
         self._input_transform = _transforms.compose(transforms)
         self._output_transform = _transforms.compose(output_transforms)
-        self._rng = rng or jax.random.key(0)
         self._sample_kwargs = sample_kwargs or {}
         self._metadata = metadata or {}
+        self._is_pytorch_model = is_pytorch
+        self._pytorch_device = pytorch_device
+
+        if self._is_pytorch_model:
+            self._model = self._model.to(pytorch_device)
+            self._model.eval()
+            self._sample_actions = model.sample_actions
+        else:
+            # JAX model setup
+            # [head_tuning] BEGIN: mark attention-return flags as static to avoid TracerBoolConversionError under JIT
+            self._sample_actions = nnx_utils.module_jit(
+                model.sample_actions,
+                static_argnames=(
+                    "return_attention_heads",
+                    "return_attention_probs",
+                    "return_state_heads",
+                    "return_state_and_first_action_heads",
+                ),
+            )
+            # [head_tuning] END
+            self._rng = rng or jax.random.key(0)
 
     @override
-    def infer(self, obs: dict) -> dict:  # type: ignore[misc]
+    def infer(
+        self,
+        obs: dict,
+        *,
+        noise: np.ndarray | None = None,
+        # [head_tuning] BEGIN: attention-return flags added to infer() for activation extraction stage
+        return_attention_heads: bool = False,
+        return_attention_probs: bool = False,
+        return_state_heads: bool = False,
+        return_state_and_first_action_heads: bool = False,
+        # [head_tuning] END
+    ) -> dict:  # type: ignore[misc]
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
-        # Make a batch and convert to jax.Array.
-        inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], inputs)
+        if not self._is_pytorch_model:
+            # Make a batch and convert to jax.Array.
+            inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], inputs)
+            self._rng, sample_rng_or_pytorch_device = jax.random.split(self._rng)
+        else:
+            # Convert inputs to PyTorch tensors and move to correct device
+            inputs = jax.tree.map(lambda x: torch.from_numpy(np.array(x)).to(self._pytorch_device)[None, ...], inputs)
+            sample_rng_or_pytorch_device = self._pytorch_device
 
+        # Prepare kwargs for sample_actions
+        sample_kwargs = dict(self._sample_kwargs)
+        if noise is not None:
+            noise = torch.from_numpy(noise).to(self._pytorch_device) if self._is_pytorch_model else jnp.asarray(noise)
+
+            if noise.ndim == 2:  # If noise is (action_horizon, action_dim), add batch dimension
+                noise = noise[None, ...]  # Make it (1, action_horizon, action_dim)
+            sample_kwargs["noise"] = noise
+
+        # [head_tuning] BEGIN: pass attention-return flags through to sample_actions
+        sample_kwargs["return_attention_heads"] = return_attention_heads
+        sample_kwargs["return_attention_probs"] = return_attention_probs
+        sample_kwargs["return_state_heads"] = return_state_heads
+        sample_kwargs["return_state_and_first_action_heads"] = return_state_and_first_action_heads
+        # [head_tuning] END
+
+        observation = _model.Observation.from_dict(inputs)
         start_time = time.monotonic()
-        self._rng, sample_rng = jax.random.split(self._rng)
-        outputs = {
-            "state": inputs["state"],
-            "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), **self._sample_kwargs),
-        }
-        # Unbatch and convert to np.ndarray.        # Unbatch and convert to np.ndarray.
-        outputs = jax.tree.map(lambda x: np.asarray(x[0, ...]), outputs)
+        result = self._sample_actions(sample_rng_or_pytorch_device, observation, **sample_kwargs)
+
+        # [head_tuning] BEGIN: unpack optional attention outputs from sample_actions result
+        # unpack optional attention outputs and optional decode step
+        actions = result
+        attention_outputs = None
+        decode_step = None
+        if isinstance(result, tuple):
+            if len(result) == 2:
+                actions, attention_outputs = result
+            elif len(result) == 3:
+                actions, attention_outputs, decode_step = result
+
+        outputs = {"state": inputs["state"], "actions": actions}
+        # [head_tuning] END
+
         model_time = time.monotonic() - start_time
+        if self._is_pytorch_model:
+            outputs = jax.tree.map(lambda x: np.asarray(x[0, ...].detach().cpu()), outputs)
+        else:
+            outputs = jax.tree.map(lambda x: np.asarray(x[0, ...]), outputs)
 
         outputs = self._output_transform(outputs)
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
+        # [head_tuning] BEGIN: attach attention outputs / decode_step to result dict
+        if attention_outputs is not None:
+            outputs["attention_outputs"] = attention_outputs
+        if decode_step is not None:
+            outputs["decode_step"] = decode_step
+        # [head_tuning] END
         return outputs
 
     @property

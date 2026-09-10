@@ -47,6 +47,48 @@ def init_logging():
     logger.handlers[0].setFormatter(formatter)
 
 
+# [head_tuning] BEGIN: _create_masked_optimizer_for_head_tuning — wraps base optimizer with head-selective mask
+def _create_masked_optimizer_for_head_tuning(
+    config: _config.TrainConfig,
+    params: nnx.State,
+) -> optax.GradientTransformation:
+    """Creates a masked optimizer specifically for head-tuning.
+
+    This wraps a base optimizer so that only specified attention heads receive updates.
+    """
+    # 1. Create the base optimizer using the standard function.
+    base_optimizer = _optimizer.create_optimizer(config.optimizer, config.lr_schedule)
+
+    # 2. Get trainable parameters according to the filter
+    trainable_params = params.filter(config.trainable_filter)
+    logging.info(f"Trainable params has {len(trainable_params.to_pure_dict())} parameters")
+
+    # 3. Create mask only for trainable parameters
+    mask_arrays = _optimizer._create_head_tuning_mask(
+        trainable_params,
+        config.optimizer.trainable_head_indices,
+        freeze_kv=getattr(config.optimizer, "freeze_kv", False),
+        only_attention=getattr(config.optimizer, "only_attention", False),
+        freeze_mlp=getattr(config.optimizer, "freeze_mlp", False),
+    )
+    logging.info(
+        f"Generated mask has {len(mask_arrays)} top-level keys: {list(mask_arrays.keys())}"
+    )
+
+    # 4. Convert the mask to a pure dict to avoid repeated conversions during update
+    mask_dict = nnx.State(mask_arrays).to_pure_dict()
+
+    # 5. Define the wrapper for the update step operating on pure dicts
+    def masked_update_fn(updates, state, params=None):
+        updates_dict = updates.to_pure_dict() if hasattr(updates, "to_pure_dict") else updates
+        masked_updates_dict = jax.tree_util.tree_map(lambda u, m: u * m, updates_dict, mask_dict)
+        return base_optimizer.update(masked_updates_dict, state, params)
+
+    # 6. Return the new wrapped optimizer
+    return optax.GradientTransformation(base_optimizer.init, masked_update_fn)
+# [head_tuning] END
+
+
 def init_wandb(config: _config.TrainConfig, *, resuming: bool, log_code: bool = False, enabled: bool = True):
     if not enabled:
         wandb.init(mode="disabled")
@@ -85,7 +127,15 @@ def _load_weights_and_validate(loader: _weight_loaders.WeightLoader, params_shap
 def init_train_state(
     config: _config.TrainConfig, init_rng: at.KeyArrayLike, mesh: jax.sharding.Mesh, *, resume: bool
 ) -> tuple[training_utils.TrainState, Any]:
-    tx = _optimizer.create_optimizer(config.optimizer, config.lr_schedule, weight_decay_mask=None)
+    # [head_tuning] BEGIN: conditional optimizer selection — head-tuning vs standard
+    # Conditionally create optimizer: masked for head-tuning, standard otherwise
+    if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
+        # Get parameter structure for mask construction without instantiating full params
+        params_structure = jax.eval_shape(lambda: nnx.state(config.model.create(init_rng)))
+        tx = _create_masked_optimizer_for_head_tuning(config, params_structure)
+    else:
+        tx = _optimizer.create_optimizer(config.optimizer, config.lr_schedule, weight_decay_mask=None)
+    # [head_tuning] END
 
     def init(rng: at.KeyArrayLike, partial_params: at.Params | None = None) -> training_utils.TrainState:
         rng, model_rng = jax.random.split(rng)
@@ -108,7 +158,11 @@ def init_train_state(
             params=params,
             model_def=nnx.graphdef(model),
             tx=tx,
-            opt_state=tx.init(params.filter(config.trainable_filter)),
+            opt_state=(  # [head_tuning] pure-dict init path for head-tuning vs standard nnx.State init
+                tx.init(params.filter(config.trainable_filter).to_pure_dict())
+                if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning)
+                else tx.init(params.filter(config.trainable_filter))
+            ),
             ema_decay=config.ema_decay,
             ema_params=None if config.ema_decay is None else params,
         )
@@ -157,13 +211,37 @@ def train_step(
     diff_state = nnx.DiffState(0, config.trainable_filter)
     loss, grads = nnx.value_and_grad(loss_fn, argnums=diff_state)(model, train_rng, observation, actions)
 
-    params = state.params.filter(config.trainable_filter)
-    updates, new_opt_state = state.tx.update(grads, state.opt_state, params)
-    new_params = optax.apply_updates(params, updates)
+    # [head_tuning] BEGIN: masked update step for head-tuning (pure-dict flow) vs standard nnx.State flow
+    # Branch: head-based tuning uses pure-dict optax flow with masking
+    if isinstance(config.optimizer, _optimizer.AdamWForHeadTuning):
+        # Optional debug of optimizer state structure at first step
+        # jax.lax.cond(
+        #     state.step == 0,
+        #     lambda: jax.debug.print("Optimizer state structure: {opt_state}", opt_state=state.opt_state),
+        #     lambda: None,
+        # )
 
-    # Update the model in place and return the new full state.
-    nnx.update(model, new_params)
-    new_params = nnx.state(model)
+        params_trainable = state.params.filter(config.trainable_filter)
+        grads_dict = grads.to_pure_dict()
+        params_trainable_dict = params_trainable.to_pure_dict()
+
+        updates_dict, new_opt_state = state.tx.update(
+            grads_dict, state.opt_state, params_trainable_dict
+        )
+        new_params_trainable_dict = optax.apply_updates(
+            params_trainable_dict, updates_dict
+        )
+        nnx.update(model, nnx.State(new_params_trainable_dict))
+        new_params = nnx.state(model)
+    else:
+        params = state.params.filter(config.trainable_filter)
+        updates, new_opt_state = state.tx.update(grads, state.opt_state, params)
+        new_params = optax.apply_updates(params, updates)
+
+        # Update the model in place and return the new full state.
+        nnx.update(model, new_params)
+        new_params = nnx.state(model)
+    # [head_tuning] END
 
     new_state = dataclasses.replace(state, step=state.step + 1, params=new_params, opt_state=new_opt_state)
     if state.ema_decay is not None:
